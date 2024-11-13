@@ -80,8 +80,6 @@ pub async fn download_data(
     let data_dir: &Path = data_dir.as_ref();
     let name: &str = name.as_ref();
 
-
-
     /* Step 1: Get target registry address */
     // Choose a random location to attempt to download the asset from.
     if access.is_empty() {
