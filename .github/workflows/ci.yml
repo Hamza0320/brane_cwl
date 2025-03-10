@@ -52,6 +52,17 @@ jobs:
       os: ubuntu-24.04
       rust-version: stable
 
+  test-coverage:
+    needs: test
+    name: "Test coverage"
+    # TODO: Run on macOS and windows as well using matrix (if this provides any value)
+
+    uses: ./.github/workflows/mixin-cargo-llvm-cov.yml
+    secrets: inherit
+    with:
+      os: ubuntu-24.04
+      rust-version: stable
+
   clippy:
     needs: check-stable-all
     name: "Clippy (Stable)"
@@ -64,7 +75,7 @@ jobs:
 
   # We use the nightly formatter because it has additional formatter settings
   fmt:
-    # Note that we don't depend on check in stable or nightly 
+    # Note that we don't depend on check in stable or nightly
     # as code need not compile for the formatter to work
     name: "Formatter"
     uses: ./.github/workflows/mixin-cargo-fmt.yml
