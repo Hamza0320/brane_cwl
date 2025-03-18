@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 
 
 /***** ERRORS *****/
-/// Defines (parsing) errors that relate to the DataIndex struct.
+/// Defines (parsing) errors that relate to the [`DataIndex`] struct.
 #[derive(Debug)]
 pub enum DataIndexError {
     /// Failed to open the given file.
@@ -58,7 +58,7 @@ impl Error for DataIndexError {}
 
 
 
-/// Defines errors that relate to the RuntimeDataIndex struct.
+/// Defines errors that relate to the [`RuntimeDataIndex`] struct.
 #[derive(Debug)]
 pub enum RuntimeDataIndexError {
     /// A dataset was already known under this name.
@@ -79,7 +79,7 @@ impl Error for RuntimeDataIndexError {}
 
 
 
-/// Defines (parsing) errors that relate to the DataInfo struct.
+/// Defines (parsing) errors that relate to the [`DataInfo`] struct.
 #[derive(Debug)]
 pub enum DataInfoError {
     /// Failed to open the given file.
@@ -115,7 +115,7 @@ impl Display for DataInfoError {
 
 impl Error for DataInfoError {}
 
-/// Defines (parsing) errors that relate to the AssetInfo struct.
+/// Defines (parsing) errors that relate to the [`AssetInfo`] struct.
 #[derive(Debug)]
 pub enum AssetInfoError {
     /// Failed to open the given file.
@@ -208,7 +208,7 @@ pub type Location = String;
 
 
 
-/// Defines an enum that represents either a Data or an IntermediateResult.
+/// Defines an enum that represents either a `Data` or an `IntermediateResult`.
 #[derive(Clone, Debug, Deserialize, EnumDebug, Eq, Hash, PartialEq, Serialize)]
 pub enum DataName {
     /// It's referring a dataset
@@ -225,7 +225,7 @@ impl DataName {
     #[inline]
     pub fn is_intermediate_result(&self) -> bool { matches!(self, Self::IntermediateResult(_)) }
 
-    /// Returns a reference to the name in this DataName.
+    /// Returns a reference to the name in this `DataName`.
     #[inline]
     pub fn name(&self) -> &str {
         use DataName::*;
@@ -234,7 +234,7 @@ impl DataName {
         }
     }
 
-    /// Consumes this DataName and returns the inner name.
+    /// Consumes this `DataName` and returns the inner name.
     #[inline]
     pub fn into_name(self) -> String {
         use DataName::*;
@@ -272,15 +272,15 @@ pub enum AvailabilityKind {
     },
 }
 impl AvailabilityKind {
-    /// Returns if this AvailabilityKind is an `AvailabilityKind::Available`.
+    /// Returns if this `AvailabilityKind` is an `AvailabilityKind::Available`.
     #[inline]
     pub fn is_available(&self) -> bool { matches!(self, Self::Available { .. }) }
 
-    /// Returns if this AvailabilityKind is an `AvailabilityKind::Unvailable`.
+    /// Returns if this `AvailabilityKind` is an `AvailabilityKind::Unvailable`.
     #[inline]
     pub fn is_unavailable(&self) -> bool { matches!(self, Self::Unavailable { .. }) }
 
-    /// Returns the internal AccessKind is this AvailabilityKind is `AvailabilityKind::Available`.
+    /// Returns the internal [`AccessKind`] is this `AvailabilityKind` is `AvailabilityKind::Available`.
     ///
     /// # Panics
     /// This function panics if it is not `AvailabilityKind::Available`.
@@ -293,7 +293,7 @@ impl AvailabilityKind {
         }
     }
 
-    /// Returns the internal PreprocessKind is this AvailabilityKind is `AvailabilityKind::Unavailable`.
+    /// Returns the internal [`PreprocessKind`] is this `AvailabilityKind` is `AvailabilityKind::Unavailable`.
     ///
     /// # Panics
     /// This function panics if it is not `AvailabilityKind::Unavailable`.
@@ -336,21 +336,21 @@ pub enum PreprocessKind {
 /// Defines an index of all datasets known to the instance.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DataIndex {
-    /// Stores the list of all DataInfos per dataset identifier.
+    /// Stores the list of all [`DataInfo`]s per dataset identifier.
     index: HashMap<String, DataInfo>,
 }
 
 impl DataIndex {
-    /// Constructor for the DataIndex that reads it from the given path.
+    /// Constructor for the `DataIndex` that reads it from the given path.
     ///
     /// # Generic arguments
     /// - `P`: The &Path-like type of the `path`.
     ///
     /// # Arguments
-    /// - `path`: The path from which we will read the DataIndex.
+    /// - `path`: The path from which we will read the `DataIndex`.
     ///
     /// # Returns
-    /// A new DataIndex instance with the datasets stored in the file.
+    /// A new `DataIndex` instance with the datasets stored in the file.
     ///
     /// # Errors
     /// This function errors if we could not read or parse the file.
@@ -373,16 +373,16 @@ impl DataIndex {
         }
     }
 
-    /// Constructor for the DataIndex that reads it from the given reader.
+    /// Constructor for the `DataIndex` that reads it from the given reader.
     ///
     /// # Generic arguments
     /// - `R`: The Read-enabled type of the `reader`.
     ///
     /// # Arguments
-    /// - `reader`: The reader from which we will read the DataIndex.
+    /// - `reader`: The reader from which we will read the `DataIndex`.
     ///
     /// # Returns
-    /// A new DataIndex instance with the datasets stored in the reader.
+    /// A new `DataIndex` instance with the datasets stored in the reader.
     ///
     /// # Errors
     /// This function errors if we could not read or parse the reader.
@@ -394,13 +394,13 @@ impl DataIndex {
         }
     }
 
-    /// Constructor for the DataIndex that creates it from a list of DataInfos.
+    /// Constructor for the `DataIndex` that creates it from a list of [`DataInfo`]s.
     ///
     /// # Arguments
-    /// - `infos`: The DataInfos on which to base this index.
+    /// - `infos`: The [`DataInfo`]s on which to base this index.
     ///
     /// # Returns
-    /// A new DataIndex instance with the datasets stored in each of the given infos.
+    /// A new `DataIndex` instance with the datasets stored in each of the given infos.
     ///
     /// # Errors
     /// This function errors if there were namespace conflicts and such.
@@ -429,7 +429,7 @@ impl DataIndex {
         Ok(Self { index })
     }
 
-    /// Returns a DataInfo that describes all locations that advertise the given dataset and how to access it per-location.
+    /// Returns a [`DataInfo`] that describes all locations that advertise the given dataset and how to access it per-location.
     ///
     /// # Generic arguments
     /// - `S`: The String-like type of the `name`.
@@ -438,15 +438,15 @@ impl DataIndex {
     /// - `name`: The dataset identifier to search for.
     ///
     /// # Returns
-    /// A DataInfo struct that represents this data asset.
+    /// A [`DataInfo`] struct that represents this data asset.
     #[inline]
     pub fn get<S: AsRef<str>>(&self, name: S) -> Option<&DataInfo> { self.index.get(name.as_ref()) }
 
-    /// Returns an iterator over the internal DataIndices.
+    /// Returns an iterator over the internal `DataIndices`.
     #[inline]
     pub fn iter(&self) -> impl Iterator<Item = &DataInfo> { self.into_iter() }
 
-    /// Returns a(n) (mutable) iterator over the internal DataIndices.
+    /// Returns a(n) (mutable) iterator over the internal `DataIndices`.
     #[inline]
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut DataInfo> { self.into_iter() }
 }
@@ -483,10 +483,10 @@ pub struct RuntimeDataIndex {
 }
 
 impl RuntimeDataIndex {
-    /// Constructor for the RuntimeDataIndex that initializes it to empty. It is up to the planner to populate it.
+    /// Constructor for the `RuntimeDataIndex` that initializes it to empty. It is up to the planner to populate it.
     ///
     /// # Returns
-    /// A new RuntimeDataIndex instance.
+    /// A new `RuntimeDataIndex` instance.
     #[inline]
     pub fn new() -> Self { Self { local_data: HashMap::new(), remote_data: HashMap::new() } }
 
@@ -550,7 +550,7 @@ impl RuntimeDataIndex {
     /// - `name`: The name/identifier of the dataset to query for.
     ///
     /// # Returns
-    /// A reference to this dataset's AccessKind that describes how to access it. If, however, the dataset isn't locally available, it returns `None`.
+    /// A reference to this dataset's `AccessKind` that describes how to access it. If, however, the dataset isn't locally available, it returns `None`.
     #[inline]
     pub fn local(&self, name: impl AsRef<str>) -> Option<&AccessKind> { self.local_data.get(name.as_ref()) }
 
@@ -560,7 +560,7 @@ impl RuntimeDataIndex {
     /// - `name`: The name/identifier of the dataset to query for.
     ///
     /// # Returns
-    /// A reference to this dataset's TransferKind that describes how to transfer it. If, however, the dataset isn't remotely available, it returns `None`.
+    /// A reference to this dataset's `TransferKind` that describes how to transfer it. If, however, the dataset isn't remotely available, it returns `None`.
     #[inline]
     pub fn remote(&self, name: impl AsRef<str>) -> Option<&PreprocessKind> { self.remote_data.get(name.as_ref()) }
 }
@@ -572,10 +572,10 @@ impl Default for RuntimeDataIndex {
 
 
 
-/// Defines a single DataInfo file that describes a dataset and how to access it.
+/// Defines a single `DataInfo` file that describes a dataset and how to access it.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DataInfo {
-    /// Defines the name (=identifier) of the DataInfo. Must be unique across the instance.
+    /// Defines the name (=identifier) of the `DataInfo`. Must be unique across the instance.
     pub name: String,
     /// The list of owners of this asset.
     pub owners: Option<Vec<String>>,
@@ -584,21 +584,21 @@ pub struct DataInfo {
     /// The created timestamp of the asset.
     pub created: DateTime<Utc>,
 
-    /// Defines how to access this DataInfo per location that advertises it.
+    /// Defines how to access this `DataInfo` per location that advertises it.
     pub access: HashMap<Location, AccessKind>,
 }
 
 impl DataInfo {
-    /// Constructor for the DataInfo that reads it from the given path.
+    /// Constructor for the `DataInfo` that reads it from the given path.
     ///
     /// # Generic arguments
     /// - `P`: The &Path-like type of the `path`.
     ///
     /// # Arguments
-    /// - `path`: The path from which we will read the DataInfo.
+    /// - `path`: The path from which we will read the `DataInfo`.
     ///
     /// # Returns
-    /// A new DataInfo instance representing the asset described in the given file.
+    /// A new `DataInfo` instance representing the asset described in the given file.
     ///
     /// # Errors
     /// This function errors if we could not read or parse the file.
@@ -621,16 +621,16 @@ impl DataInfo {
         }
     }
 
-    /// Constructor for the DataInfo that reads it from the given reader.
+    /// Constructor for the `DataInfo` that reads it from the given reader.
     ///
     /// # Generic arguments
     /// - `R`: The Read-enabled type of the `reader`.
     ///
     /// # Arguments
-    /// - `reader`: The reader from which we will read the DataInfo.
+    /// - `reader`: The reader from which we will read the `DataInfo`.
     ///
     /// # Returns
-    /// A new DataInfo instance representing the asset described in the given reader.
+    /// A new `DataInfo` instance representing the asset described in the given reader.
     ///
     /// # Errors
     /// This function errors if we could not read or parse the reader.
@@ -642,10 +642,10 @@ impl DataInfo {
         }
     }
 
-    /// Writes the DataInfo to the given path.
+    /// Writes the `DataInfo` to the given path.
     ///
     /// # Arguments
-    /// - `path`: The path to write the DataInfo to.
+    /// - `path`: The path to write the `DataInfo` to.
     ///
     /// # Returns
     /// Nothing, but does write a new file at the given path.
@@ -669,13 +669,13 @@ impl DataInfo {
         }
     }
 
-    /// Writes the DataInfo to the given writer.
+    /// Writes the `DataInfo` to the given writer.
     ///
     /// # Arguments
     /// - `writer` The Writer to write the DataInfo to.
     ///
     /// # Returns
-    /// Nothing, but does write the DataInfo to the given writer.
+    /// Nothing, but does write the `DataInfo` to the given writer.
     ///
     /// # Errors
     /// This function errors if we could not write to the given writer.
@@ -690,10 +690,10 @@ impl DataInfo {
 
 
 
-/// Defines a single AssetInfo file that describes a dataset but for a user-facing user.
+/// Defines a single `AssetInfo` file that describes a dataset but for a user-facing user.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AssetInfo {
-    /// Defines the name (=identifier) of the AssetInfo. Must be unique across the instance.
+    /// Defines the name (=identifier) of the `AssetInfo`. Must be unique across the instance.
     pub name: String,
     /// The list of owners of this asset. This is not the domains, but rather the physical people who added it and such.
     pub owners: Option<Vec<String>>,
@@ -708,13 +708,13 @@ pub struct AssetInfo {
 }
 
 impl AssetInfo {
-    /// Constructor for the AssetInfo that reads it from the given path.
+    /// Constructor for the `AssetInfo` that reads it from the given path.
     ///
     /// # Arguments
-    /// - `path`: The path from which we will read the AssetInfo.
+    /// - `path`: The path from which we will read the `AssetInfo`.
     ///
     /// # Returns
-    /// A new AssetInfo instance representing the asset described in the given file.
+    /// A new `AssetInfo` instance representing the asset described in the given file.
     ///
     /// # Errors
     /// This function errors if we could not read or parse the file.
@@ -737,16 +737,16 @@ impl AssetInfo {
         }
     }
 
-    /// Constructor for the AssetInfo that reads it from the given reader.
+    /// Constructor for the `AssetInfo` that reads it from the given reader.
     ///
     /// # Generic arguments
     /// - `R`: The read-capable type to read from.
     ///
     /// # Arguments
-    /// - `reader`: The reader from which we will read the AssetInfo.
+    /// - `reader`: The reader from which we will read the `AssetInfo`.
     ///
     /// # Returns
-    /// A new AssetInfo instance representing the asset described in the given reader.
+    /// A new `AssetInfo` instance representing the asset described in the given reader.
     ///
     /// # Errors
     /// This function errors if we could not read or parse the reader.
@@ -758,13 +758,13 @@ impl AssetInfo {
         }
     }
 
-    /// Converts this AssetInfo into a DataInfo under the given domain.
+    /// Converts this `AssetInfo` into a [`DataInfo`] under the given domain.
     ///
     /// # Arguments
-    /// - `location`: The name of the location where this AssetInfo came from.
+    /// - `location`: The name of the location where this `AssetInfo` came from.
     ///
     /// # Returns
-    /// A new DataInfo instance that contains the same information as this AssetInfo but ordered differently.
+    /// A new [`DataInfo`] instance that contains the same information as this `AssetInfo` but ordered differently.
     #[inline]
     pub fn into_data_info(self, location: impl Into<String>) -> DataInfo {
         DataInfo {

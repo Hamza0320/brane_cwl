@@ -30,7 +30,7 @@ use tonic::{Code, Request, Response, Status};
 
 
 /***** ERRORS *****/
-/// Defines the errors occuring in the DriverServiceClient or DriverServiceServer.
+/// Defines the errors occuring in the [`DriverServiceClient`] or [`DriverServiceServer`].
 #[derive(Debug)]
 pub enum DriverServiceError {
     /// Failed to create an endpoint with the given address.
@@ -124,7 +124,7 @@ pub struct ExecuteReply {
     /// If given, then the driver has stderr to write to the user.
     #[prost(tag = "4", optional, string)]
     pub stderr: Option<String>,
-    /// If given, then the workflow has returned a value to use (FullValue encoded as JSON).
+    /// If given, then the workflow has returned a value to use (`FullValue` encoded as JSON).
     #[prost(tag = "5", optional, string)]
     pub value:  Option<String>,
 }
@@ -134,7 +134,7 @@ pub struct ExecuteReply {
 
 
 /***** SERVICES *****/
-/// The DriverServiceClient can connect to a remote server implementing the DriverService protocol.
+/// The `DriverServiceClient` can connect to a remote server implementing the [`DriverService`] protocol.
 #[derive(Debug, Clone)]
 pub struct DriverServiceClient {
     /// The client with which we actually do everything
@@ -148,7 +148,7 @@ impl DriverServiceClient {
     /// - `address`: The address of the remote endpoint to connect to.
     ///
     /// # Returns
-    /// A new DriverServiceClient instance that is connected to the remove endpoint.
+    /// A new `DriverServiceClient` instance that is connected to the remove endpoint.
     ///
     /// # Errors
     /// This function errors if the connection could not be established for whatever reason.
@@ -172,13 +172,13 @@ impl DriverServiceClient {
         Ok(Self { client: GrpcClient::new(conn) })
     }
 
-    /// Send a CreateSessionRequest to the connected endpoint.
+    /// Send a [`CreateSessionRequest`] to the connected endpoint.
     ///
     /// # Arguments
-    /// - `request`: The CreateSessionRequest to send to the endpoint.
+    /// - `request`: The [`CreateSessionRequest`] to send to the endpoint.
     ///
     /// # Returns
-    /// The CreateSessionReply the endpoint returns.
+    /// The [`CreateSessionReply`] the endpoint returns.
     ///
     /// # Errors
     /// This function errors if either we failed to send the request or the endpoint itself failed to process it.
@@ -216,13 +216,13 @@ impl DriverServiceClient {
         self.client.unary(request.into_request(), path, codec).await
     }
 
-    /// Send an ExecuteRequest to the connected endpoint.
+    /// Send an [`ExecuteRequest`] to the connected endpoint.
     ///
     /// # Arguments
-    /// - `request`: The ExecuteRequest to send to the endpoint.
+    /// - `request`: The [`ExecuteRequest`] to send to the endpoint.
     ///
     /// # Returns
-    /// The ExecuteReply the endpoint returns.
+    /// The [`ExecuteReply`] the endpoint returns.
     ///
     /// # Errors
     /// This function errors if either we failed to send the request or the endpoint itself failed to process it.
@@ -288,7 +288,7 @@ pub trait DriverService: 'static + Send + Sync {
     async fn execute(&self, request: Request<ExecuteRequest>) -> Result<Response<Self::ExecuteStream>, Status>;
 }
 
-/// The DriverServiceServer hosts the server part of the DriverService protocol.
+/// The `DriverServiceServer` hosts the server part of the [`DriverService`] protocol.
 #[derive(Debug)]
 pub struct DriverServiceServer<T> {
     /// The service that we host.
@@ -296,13 +296,13 @@ pub struct DriverServiceServer<T> {
 }
 
 impl<T> DriverServiceServer<T> {
-    /// Constructor for the DriverServiceServer.
+    /// Constructor for the `DriverServiceServer`.
     ///
     /// # Arguments
-    /// - `service`: The Service to serve.
+    /// - `service`: The [`Service`] to serve.
     ///
     /// # Returns
-    /// A new DriverServiceServer instance.
+    /// A new `DriverServiceServer` instance.
     #[inline]
     pub fn new(service: T) -> Self { Self { service: Arc::new(service) } }
 }
@@ -324,7 +324,7 @@ where
         match req.uri().path() {
             // Incoming CreateSessionRequest
             "/driver.DriverService/CreateSession" => {
-                /// Helper struct for the given DriverService that focusses specifically on this request.
+                /// Helper struct for the given [`DriverService`] that focusses specifically on this request.
                 struct CreateSessionSvc<T>(Arc<T>);
                 impl<T: DriverService> UnaryService<CreateSessionRequest> for CreateSessionSvc<T> {
                     type Future = BoxFuture<Response<Self::Response>, Status>;
@@ -350,7 +350,7 @@ where
 
             // Incoming CheckRequest
             "/driver.DriverService/Check" => {
-                /// Helper struct for the given DriverService that focusses specifically on this request.
+                /// Helper struct for the given [`DriverService`] that focusses specifically on this request.
                 struct CheckSvc<T>(Arc<T>);
                 impl<T: DriverService> UnaryService<CheckRequest> for CheckSvc<T> {
                     type Future = BoxFuture<Response<Self::Response>, Status>;
@@ -376,7 +376,7 @@ where
 
             // Incoming ExecuteRequest
             "/driver.DriverService/Execute" => {
-                /// Helper struct for the given DriverService that focusses specifically on this request.
+                /// Helper struct for the given [`DriverService`] that focusses specifically on this request.
                 struct ExecuteSvc<T>(Arc<T>);
                 impl<T: DriverService> ServerStreamingService<ExecuteRequest> for ExecuteSvc<T> {
                     type Future = BoxFuture<Response<Self::ResponseStream>, Status>;

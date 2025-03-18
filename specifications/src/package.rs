@@ -42,10 +42,10 @@ type Map<T> = std::collections::HashMap<String, T>;
 
 
 /***** ERRORS *****/
-/// Lists the errors that can occur for the PackageKind enum
+/// Lists the errors that can occur for the [`PackageKind`] enum
 #[derive(Debug)]
 pub enum PackageKindError {
-    /// We tried to convert a string to a PackageKind but failed
+    /// We tried to convert a string to a [`PackageKind`] but failed
     IllegalKind { skind: String },
 }
 impl PackageKindError {
@@ -75,7 +75,7 @@ impl std::fmt::Display for PackageKindError {
 }
 impl std::error::Error for PackageKindError {}
 
-/// Lists the error for parsing a Capability from a string.
+/// Lists the error for parsing a [`Capability`] from a string.
 #[derive(Debug)]
 pub enum CapabilityParseError {
     /// An unknown capability was given.
@@ -93,14 +93,14 @@ impl std::fmt::Display for CapabilityParseError {
 impl std::error::Error for CapabilityParseError {}
 
 
-/// Lists the errors that can occur for the PackageInfo struct
+/// Lists the errors that can occur for the [`PackageInfo`] struct
 #[derive(Debug)]
 pub enum PackageInfoError {
-    /// We could not parse a given yaml string as a PackageInfo
+    /// We could not parse a given yaml string as a [`PackageInfo`]
     IllegalString { err: serde_yaml::Error },
-    /// We could not parse a given yaml file as a PackageInfo
+    /// We could not parse a given yaml file as a [`PackageInfo`]
     IllegalFile { path: PathBuf, err: serde_yaml::Error },
-    /// We could not parse a given set of JSON-encoded PackageInfos
+    /// We could not parse a given set of JSON-encoded [`PackageInfo`]s
     IllegalJsonValue { err: serde_json::Error },
     /// Could not open the file we wanted to load
     IOError { path: PathBuf, err: std::io::Error },
@@ -127,10 +127,10 @@ impl std::fmt::Display for PackageInfoError {
 }
 impl std::error::Error for PackageInfoError {}
 
-/// Lists the errors that can occur for the PackageIndex struct
+/// Lists the errors that can occur for the [`PackageIndex`] struct
 #[derive(Debug)]
 pub enum PackageIndexError {
-    /// A package/version combination has already been loaded into the PackageIndex
+    /// A package/version combination has already been loaded into the [`PackageIndex`]
     DuplicatePackage { name: String, version: String },
     /// Could not parse a version string as one
     IllegalVersion { package: String, raw: String, err: semver::Error },
@@ -139,12 +139,12 @@ pub enum PackageIndexError {
     RequestFailed { url: String, err: reqwest::Error },
     /// A HTTP request returned a non-200 status code
     ResponseNot200 { url: String, status: reqwest::StatusCode },
-    /// Coult not parse a given remote JSON file as a PackageIndex
+    /// Coult not parse a given remote JSON file as a [`PackageIndex`]
     IllegalJsonFile { url: String, err: reqwest::Error },
 
-    /// Could not parse a given reader with JSON data as a PackageIndex
+    /// Could not parse a given reader with JSON data as a [`PackageIndex`]
     IllegalJsonReader { err: serde_json::Error },
-    /// Could not correct parse the JSON as a list of PackageInfo structs
+    /// Could not correct parse the JSON as a list of [`PackageInfo`] structs
     IllegalPackageInfos { err: PackageInfoError },
     /// Could not open the file we wanted to load
     IOError { path: PathBuf, err: std::io::Error },
@@ -189,7 +189,7 @@ pub enum PackageKind {
 }
 
 impl PackageKind {
-    /// Returns a more understandable name for the PackageKinds.
+    /// Returns a more understandable name for the `PackageKind`s.
     pub fn pretty(&self) -> &str {
         match self {
             PackageKind::Ecu => "code package",
@@ -308,7 +308,7 @@ pub struct PackageInfo {
 
 #[allow(unused)]
 impl PackageInfo {
-    /// Constructor for the PackageInfo.
+    /// Constructor for the `PackageInfo`.
     ///
     /// **Arguments**
     ///  * `name`: The name/programming ID of this package.
@@ -340,13 +340,13 @@ impl PackageInfo {
 
     /// **Edited: changed to return appropriate errors. Also added docstring.**
     ///
-    /// Constructor for the PackageInfo that tries to construct it from the file at the given location.
+    /// Constructor for the `PackageInfo` that tries to construct it from the file at the given location.
     ///
     /// **Arguments**
     ///  * `path`: The path to load.
     ///
     /// **Returns**  
-    /// The new PackageInfo upon success, or a PackageInfoError detailling why if it failed.
+    /// The new `PackageInfo` upon success, or a [`PackageInfoError`] detailling why if it failed.
     pub fn from_path(path: PathBuf) -> Result<PackageInfo, PackageInfoError> {
         // Read the file first
         let contents = match fs::read_to_string(&path) {
@@ -366,13 +366,13 @@ impl PackageInfo {
 
     /// **Edited: changed to return appropriate errors. Also added docstring.**
     ///
-    /// Constructor for the PackageInfo that tries to deserialize it.
+    /// Constructor for the `PackageInfo` that tries to deserialize it.
     ///
     /// **Arguments**
-    ///  * `contents`: The string that contains the contents for the PackageInfo.
+    ///  * `contents`: The string that contains the contents for the `PackageInfo`.
     ///
     /// **Returns**  
-    /// The new PackageInfo upon success, or a PackageInfoError detailling why if it failed.
+    /// The new `PackageInfo` upon success, or a [`PackageInfoError`] detailling why if it failed.
     pub fn from_string(contents: String) -> Result<PackageInfo, PackageInfoError> {
         // Try to parse using serde
         match serde_yaml::from_str(&contents) {
@@ -381,16 +381,16 @@ impl PackageInfo {
         }
     }
 
-    /// Writes the PackageInfo to the given location.
+    /// Writes the `PackageInfo` to the given location.
     ///
     /// **Generic types**
     ///  * `P`: The Path-like type of the given target location.
     ///
     /// **Arguments**
-    ///  * `path`: The target location to write to the LocalContainerInfo to.
+    ///  * `path`: The target location to write to the `PackageInfo` to.
     ///
     /// **Returns**  
-    /// Nothing on success, or a PackageInfoError otherwise.
+    /// Nothing on success, or a [`PackageInfoError`] otherwise.
     pub fn to_path<P: AsRef<Path>>(&self, path: P) -> Result<(), PackageInfoError> {
         // Convert the path-like to a path
         let path = path.as_ref();
@@ -407,7 +407,7 @@ impl PackageInfo {
         self.to_writer(handle)
     }
 
-    /// Writes the PackageInfo to the given writer.
+    /// Writes the [`PackageInfo`] to the given writer.
     ///
     /// **Generic types**
     ///  * `W`: The type of the writer, which implements Write.
@@ -507,7 +507,7 @@ impl From<&ContainerInfo> for PackageInfo {
 
 
 
-/// Collects multiple PackageInfos into one database, called the package index.
+/// Collects multiple [`PackageInfo`]s into one database, called the package index.
 #[derive(Debug, Clone, Default)]
 pub struct PackageIndex {
     /// The list of packages stored in the index.
@@ -517,18 +517,18 @@ pub struct PackageIndex {
 }
 
 impl PackageIndex {
-    /// Constructor for the PackageIndex that initializes it to having no packages.
+    /// Constructor for the `PackageIndex` that initializes it to having no packages.
     #[inline]
     pub fn empty() -> Self { PackageIndex::new(Map::<PackageInfo>::new()) }
 
-    /// Constructor for the PackageIndex.
+    /// Constructor for the `PackageIndex`.
     ///
     /// **Arguments**
     ///  * `packages`: The map of packages to base this index on. Each key should be `<name>-<version>` (i.e., every package version is a separate entry).
     pub fn new(packages: Map<PackageInfo>) -> Self {
         // Compute the latest versions for each package
         let mut latest: Map<(Version, String)> = Map::with_capacity(packages.len());
-        for (key, package) in packages.iter() {
+        for (key, package) in &packages {
             // Check if the package name has already been added
             if !latest.contains_key(&package.name) {
                 latest.insert(package.name.clone(), (package.version, key.clone()));
@@ -548,15 +548,13 @@ impl PackageIndex {
         PackageIndex { packages, latest }
     }
 
-    /// **Edited: Returns PackageIndexErrors now.**
-    ///
     /// Tries to construct a new PackageIndex from the application file at the given path.
     ///
     /// **Arguments**
     ///  * `path`: Path to the application file.
     ///
     /// **Returns**  
-    /// The new PackageIndex if it all went fine, or a PackageIndexError if it didn't.
+    /// The new `PackageIndex` if it all went fine, or a [`PackageIndexError`] if it didn't.
     pub fn from_path(path: &Path) -> Result<Self, PackageIndexError> {
         // Try to open the referenced file
         let file = match File::open(path) {
@@ -571,15 +569,13 @@ impl PackageIndex {
         PackageIndex::from_reader(buf_reader)
     }
 
-    /// **Edited: Returns PackageIndexErrors now.**
-    ///
-    /// Tries to construct a new PackageIndex from the given reader.
+    /// Tries to construct a new `PackageIndex` from the given reader.
     ///
     /// **Arguments**
-    ///  * `r`: The reader that contains the data to construct the PackageIndex from.
+    ///  * `r`: The reader that contains the data to construct the `PackageIndex` from.
     ///
     /// **Returns**  
-    /// The new PackageIndex if it all went fine, or a PackageIndexError if it didn't.
+    /// The new `PackageIndex` if it all went fine, or a [`PackageIndexError`] if it didn't.
     pub fn from_reader<R: Read>(r: R) -> Result<Self, PackageIndexError> {
         // Try to parse using serde
         let v = match serde_json::from_reader(r) {
@@ -593,15 +589,13 @@ impl PackageIndex {
         PackageIndex::from_value(v)
     }
 
-    /// **Edited: Returns PackageIndexErrors now.**
-    ///
-    /// Tries to construct a new PackageIndex from a JSON file at the given URL.
+    /// Tries to construct a new `PackageIndex` from a JSON file at the given URL.
     ///
     /// **Arguments**
     ///  * `url`: The location of the JSON file to parse.
     ///
     /// **Returns**  
-    /// The new PackageIndex if it all went fine, or a PackageIndexError if it didn't.
+    /// The new `PackageIndex` if it all went fine, or a [`PackageIndexError`] if it didn't.
     pub async fn from_url(url: &str) -> Result<Self, PackageIndexError> {
         // try to get the file
         let json = match reqwest::get(url).await {
@@ -627,15 +621,13 @@ impl PackageIndex {
         PackageIndex::from_value(json)
     }
 
-    /// **Edited: Returns PackageIndexErrors now.**
-    ///
-    /// Tries to construct a new PackageIndex from the given JSON-parsed value.
+    /// Tries to construct a new `PackageIndex` from the given JSON-parsed value.
     ///
     /// **Arguments**
     ///  * `v`: The JSON root value of the tree to parse.
     ///
     /// **Returns**  
-    /// The new PackageIndex if it all went fine, or a PackageIndexError if it didn't.
+    /// The new `PackageIndex` if it all went fine, or a [`PackageIndexError`] if it didn't.
     pub fn from_value(v: JValue) -> Result<Self, PackageIndexError> {
         // Parse the known packages from the list of json values
         let known_packages: Vec<PackageInfo> = match serde_json::from_value(v) {
@@ -649,15 +641,13 @@ impl PackageIndex {
         PackageIndex::from_packages(known_packages)
     }
 
-    /// **Edited: Returns PackageIndexErrors now.**
-    ///
-    /// Tries to construct a new PackageIndex from a list of PackageInfos.
+    /// Tries to construct a new `PackageIndex` from a list of [`PackageInfo`]s.
     ///
     /// **Arguments**
-    ///  * `known_packages`: List of PackageInfos to incorporate in the PackageIndex.
+    ///  * `known_packages`: List of [`PackageInfo`]s to incorporate in the `PackageIndex`.
     ///
     /// **Returns**  
-    /// The new PackageIndex if it all went fine, or a PackageIndexError if it didn't.
+    /// The new `PackageIndex` if it all went fine, or a [`PackageIndexError`] if it didn't.
     pub fn from_packages(known_packages: Vec<PackageInfo>) -> Result<Self, PackageIndexError> {
         // Construct the list of packages and of versions
         let mut packages = Map::<PackageInfo>::new();
@@ -678,7 +668,7 @@ impl PackageIndex {
     ///
     /// **Arguments**
     ///  * `name`: The name of the package.
-    ///  * `version`: The version of the package to get. If omitted, uses the latest version known to the PackageIndex.
+    ///  * `version`: The version of the package to get. If omitted, uses the latest version known to the `PackageIndex`.
     ///
     /// **Returns**  
     /// An (immuteable) reference to the package if it exists, or else None.

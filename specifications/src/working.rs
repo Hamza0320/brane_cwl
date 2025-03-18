@@ -48,7 +48,7 @@ impl Display for PreprocessKindConvertError {
 }
 impl error::Error for PreprocessKindConvertError {}
 
-/// Defines the errors occuring in the JobServiceClient or JobServiceServer.
+/// Defines the errors occuring in the [`JobServiceClient`] or [`JobServiceServer`].
 #[derive(Debug)]
 pub enum JobServiceError {
     /// Failed to create an endpoint with the given address.
@@ -126,7 +126,7 @@ impl From<DataName> for crate::data::DataName {
 
 
 
-/// Auxillary message that implements the fields for a TransferRegistryTar PreprocessKind.
+/// Auxillary message that implements the fields for a `TransferRegistryTar` [`PreprocessKind`].
 #[derive(Clone, Message)]
 pub struct TransferRegistryTar {
     /// The location where the address is from.
@@ -217,7 +217,7 @@ pub enum TaskStatus {
     CompletionFailed = 14,
 
     // Finish events
-    /// The container has exited with a zero status code and return a value. If seen, then the `value` field is populated with the JSON-encoded FullValue returned.
+    /// The container has exited with a zero status code and return a value. If seen, then the `value` field is populated with the JSON-encoded `FullValue` returned.
     Finished = 15,
     /// The container was interrupted by the Job node
     Stopped = 16,
@@ -338,7 +338,7 @@ pub struct ExecuteRequest {
     /// The intermediat result returned by this call, if any.
     #[prost(tag = "6", optional, string)]
     pub result: Option<String>,
-    /// The arguments to run the request with. Given as a JSON-encoded map of names to FullValues.
+    /// The arguments to run the request with. Given as a JSON-encoded map of names to `FullValues`.
     #[prost(tag = "7", required, string)]
     pub args:   String,
 }
@@ -376,7 +376,7 @@ pub struct CommitReply {}
 
 
 /***** SERVICES *****/
-/// The JobServiceClient can connect to a remote server implementing the DriverService protocol.
+/// The `JobServiceClient` can connect to a remote server implementing the `DriverService` protocol.
 #[derive(Debug, Clone)]
 pub struct JobServiceClient {
     /// The client with which we actually do everything
@@ -390,7 +390,7 @@ impl JobServiceClient {
     /// - `address`: The address of the remote endpoint to connect to.
     ///
     /// # Returns
-    /// A new JobServiceClient instance that is connected to the remove endpoint.
+    /// A new `JobServiceClient` instance that is connected to the remove endpoint.
     ///
     /// # Errors
     /// This function errors if the connection could not be established for whatever reason.
@@ -458,13 +458,13 @@ impl JobServiceClient {
         self.client.unary(request.into_request(), path, codec).await
     }
 
-    /// Send a PreprocessRequest to the connected endpoint.
+    /// Send a [`PreprocessRequest`] to the connected endpoint.
     ///
     /// # Arguments
-    /// - `request`: The PreprocessRequest to send to the endpoint.
+    /// - `request`: The [`PreprocessRequest`] to send to the endpoint.
     ///
     /// # Returns
-    /// The PreprocessReply the endpoint returns.
+    /// The [`PreprocessReply`] the endpoint returns.
     ///
     /// # Errors
     /// This function errors if either we failed to send the request or the endpoint itself failed to process it.
@@ -480,13 +480,13 @@ impl JobServiceClient {
         self.client.unary(request.into_request(), path, codec).await
     }
 
-    /// Send an ExecuteRequest to the connected endpoint.
+    /// Send an [`ExecuteRequest`] to the connected endpoint.
     ///
     /// # Arguments
-    /// - `request`: The ExecuteRequest to send to the endpoint.
+    /// - `request`: The [`ExecuteRequest`] to send to the endpoint.
     ///
     /// # Returns
-    /// The ExecuteReply the endpoint returns.
+    /// The [`ExecuteReply`] the endpoint returns.
     ///
     /// # Errors
     /// This function errors if either we failed to send the request or the endpoint itself failed to process it.
@@ -502,13 +502,13 @@ impl JobServiceClient {
         self.client.server_streaming(request.into_request(), path, codec).await
     }
 
-    /// Send a CommitRequest to the connected endpoint.
+    /// Send a [`CommitRequest`] to the connected endpoint.
     ///
     /// # Arguments
-    /// - `request`: The CommitRequest to send to the endpoint.
+    /// - `request`: The [`CommitRequest`] to send to the endpoint.
     ///
     /// # Returns
-    /// The CommitReply the endpoint returns.
+    /// The [`CommitReply`] the endpoint returns.
     ///
     /// # Errors
     /// This function errors if either we failed to send the request or the endpoint itself failed to process it.
@@ -598,7 +598,7 @@ pub trait JobService: 'static + Send + Sync {
     async fn commit(&self, request: Request<CommitRequest>) -> Result<Response<CommitReply>, Status>;
 }
 
-/// The JobServiceServer hosts the server part of the JobService protocol.
+/// The `JobServiceServer` hosts the server part of the [`JobService`] protocol.
 #[derive(Clone, Debug)]
 pub struct JobServiceServer<T> {
     /// The service that we host.
@@ -606,13 +606,13 @@ pub struct JobServiceServer<T> {
 }
 
 impl<T> JobServiceServer<T> {
-    /// Constructor for the JobServiceServer.
+    /// Constructor for the `JobServiceServer`.
     ///
     /// # Arguments
     /// - `service`: The Service to serve.
     ///
     /// # Returns
-    /// A new JobServiceServer instance.
+    /// A new `JobServiceServer` instance.
     #[inline]
     pub fn new(service: T) -> Self { Self { service: Arc::new(service) } }
 }
@@ -634,7 +634,7 @@ where
         match req.uri().path() {
             // Incoming CheckRequest
             "/job.JobService/CheckWorkflow" => {
-                /// Helper struct for the given JobService that focusses specifically on this request.
+                /// Helper struct for the given [`JobService`] that focusses specifically on this request.
                 struct CheckWorkflowSvc<T>(Arc<T>);
                 impl<T: JobService> UnaryService<CheckWorkflowRequest> for CheckWorkflowSvc<T> {
                     type Future = BoxFuture<Response<Self::Response>, Status>;
@@ -660,7 +660,7 @@ where
 
             // Incoming CheckRequest
             "/job.JobService/CheckTask" => {
-                /// Helper struct for the given JobService that focusses specifically on this request.
+                /// Helper struct for the given [`JobService`] that focusses specifically on this request.
                 struct CheckTaskSvc<T>(Arc<T>);
                 impl<T: JobService> UnaryService<CheckTaskRequest> for CheckTaskSvc<T> {
                     type Future = BoxFuture<Response<Self::Response>, Status>;
@@ -686,7 +686,7 @@ where
 
             // Incoming PreprocessRequest
             "/job.JobService/Preprocess" => {
-                /// Helper struct for the given JobService that focusses specifically on this request.
+                /// Helper struct for the given [`JobService`] that focusses specifically on this request.
                 struct PreprocessSvc<T>(Arc<T>);
                 impl<T: JobService> UnaryService<PreprocessRequest> for PreprocessSvc<T> {
                     type Future = BoxFuture<Response<Self::Response>, Status>;
@@ -712,7 +712,7 @@ where
 
             // Incoming ExecuteRequest
             "/job.JobService/Execute" => {
-                /// Helper struct for the given DriverService that focusses specifically on this request.
+                /// Helper struct for the given `DriverService` that focusses specifically on this request.
                 struct ExecuteSvc<T>(Arc<T>);
                 impl<T: JobService> ServerStreamingService<ExecuteRequest> for ExecuteSvc<T> {
                     type Future = BoxFuture<Response<Self::ResponseStream>, Status>;
@@ -739,7 +739,7 @@ where
 
             // Incoming CommitRequest
             "/job.JobService/Commit" => {
-                /// Helper struct for the given JobService that focusses specifically on this request.
+                /// Helper struct for the given [`JobService`] that focusses specifically on this request.
                 struct CommitSvc<T>(Arc<T>);
                 impl<T: JobService> UnaryService<CommitRequest> for CommitSvc<T> {
                     type Future = BoxFuture<Response<Self::Response>, Status>;

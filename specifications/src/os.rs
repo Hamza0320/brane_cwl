@@ -124,7 +124,7 @@ impl Os {
     /// Allows one to serialize the operating system for use to download cfssl binaries.
     ///
     /// # Returns
-    /// An `OsCfsslFormatter` that implements [`Display`]` in a cfssl-compatible way.
+    /// An `OsCfsslFormatter` that implements [`Display`] in a cfssl-compatible way.
     #[inline]
     pub fn cfssl(&self) -> OsCfsslFormatter { OsCfsslFormatter { os: self } }
 }

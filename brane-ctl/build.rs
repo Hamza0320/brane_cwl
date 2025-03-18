@@ -85,7 +85,7 @@ fn main() {
         // Now download both files
         for (url, checksum, is_cfssljson) in files {
             // Nothing to do if the file already exists
-            let path: PathBuf = build_dir.join(if !is_cfssljson { "cfssl" } else { "cfssljson" });
+            let path: PathBuf = build_dir.join(if is_cfssljson { "cfssljson" } else { "cfssl" });
             if !path.exists() {
                 // Run it using the download crate
                 if let Err(err) = download_file(url, &path, DownloadSecurity::all(&checksum), None) {
@@ -94,10 +94,10 @@ fn main() {
             }
 
             // Report where it lives
-            if !is_cfssljson {
-                println!("cargo:rustc-env=CFSSL_PATH={}", path.display());
-            } else {
+            if is_cfssljson {
                 println!("cargo:rustc-env=CFSSLJSON_PATH={}", path.display());
+            } else {
+                println!("cargo:rustc-env=CFSSL_PATH={}", path.display());
             }
         }
     }

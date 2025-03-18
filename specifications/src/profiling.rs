@@ -71,11 +71,11 @@ impl ProfileTiming {
         }
     }
 
-    /// Returns whether this ProfileTiming is a scope.
+    /// Returns whether this `ProfileTiming` is a scope.
     #[inline]
     fn is_scope(&self) -> bool { matches!(self, Self::Scope(_)) }
 
-    /// Returns the internal ProfileScope.
+    /// Returns the internal [`ProfileScope`].
     ///
     /// # Panics
     /// This function panics if we were not a scope but a `ProfileTiming::Timing` instead.
@@ -113,7 +113,7 @@ impl Display for TimingFormatter<'_> {
 
 
 
-/// Formats the given ProfileReport to show a new list of results (but with a clear toplevel).
+/// Formats the given [`ProfileReport`] to show a new list of results (but with a clear toplevel).
 #[derive(Debug)]
 pub struct ProfileReportFormatter<'r> {
     /// The scope of the toplevel report to write.
@@ -128,7 +128,7 @@ impl Display for ProfileReportFormatter<'_> {
 
 
 
-/// Formats the given ProfileScope to show a neat list of results.
+/// Formats the given [`ProfileScope`] to show a neat list of results.
 #[derive(Debug)]
 pub struct ProfileScopeFormatter<'s> {
     /// The scope to format.
@@ -174,7 +174,7 @@ impl Display for ProfileScopeFormatter<'_> {
 
 
 /***** AUXILLARY *****/
-/// Defines a taken Timing, which represents an amount of time that has passed.
+/// Defines a taken `Timing`, which represents an amount of time that has passed.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct Timing {
     /// The amount of nanoseconds that have passed.
@@ -182,10 +182,10 @@ pub struct Timing {
 }
 
 impl Timing {
-    /// Returns a Timing in which no time has passed.
+    /// Returns a `Timing` in which no time has passed.
     ///
     /// # Returns
-    /// A new Timing instance, for which all `Timing::elapsed_XX()` functions will return 0.
+    /// A new `Timing` instance, for which all `Timing::elapsed_XX()` functions will return 0.
     #[inline]
     pub const fn none() -> Self { Self { nanos: 0 } }
 
@@ -194,35 +194,35 @@ impl Timing {
     /// Will attempt to find the correct scale automagically; specifically, will try to write as seconds _unless_ the time is less than that. Then, it will move to milliseconds, all the way up to nanoseconds.
     ///
     /// # Returns
-    /// A TimingFormatter that implements Display to do this kind of formatting on this Timing.
+    /// A [`TimingFormatter`] that implements Display to do this kind of formatting on this Timing.
     #[inline]
     pub fn display(&self) -> TimingFormatter { TimingFormatter(self) }
 
     /// Returns the time that has been elapsed, in seconds.
     ///
     /// # Returns
-    /// The elapsed time that this Timing represents in seconds.
+    /// The elapsed time that this `Timing` represents in seconds.
     #[inline]
     pub const fn elapsed_s(&self) -> u128 { self.nanos / 1_000_000_000 }
 
     /// Returns the time that has been elapsed, in milliseconds.
     ///
     /// # Returns
-    /// The elapsed time that this Timing represents in milliseconds.
+    /// The elapsed time that this `Timing` represents in milliseconds.
     #[inline]
     pub const fn elapsed_ms(&self) -> u128 { self.nanos / 1_000_000 }
 
     /// Returns the time that has been elapsed, in microseconds.
     ///
     /// # Returns
-    /// The elapsed time that this Timing represents in microseconds.
+    /// The elapsed time that this `Timing` represents in microseconds.
     #[inline]
     pub const fn elapsed_us(&self) -> u128 { self.nanos / 1_000 }
 
     /// Returns the time that has been elapsed, in nanoseconds.
     ///
     /// # Returns
-    /// The elapsed time that this Timing represents in nanoseconds.
+    /// The elapsed time that this `Timing` represents in nanoseconds.
     #[inline]
     pub const fn elapsed_ns(&self) -> u128 { self.nanos }
 }
@@ -255,7 +255,7 @@ impl From<&mut Duration> for Timing {
 
 
 
-/// Defines the TimerGuard, which takes a Timing as long as it is in scope.
+/// Defines the `TimerGuard`, which takes a [`Timing`] as long as it is in scope.
 #[derive(Debug)]
 pub struct TimerGuard<'s> {
     /// The start of the timing.
@@ -280,7 +280,7 @@ impl Drop for TimerGuard<'_> {
 
 
 
-/// Provides a convenience wrapper around a reference to a ProfileScope.
+/// Provides a convenience wrapper around a reference to a [`ProfileScope`].
 #[derive(Clone, Debug)]
 pub struct ProfileScopeHandle<'s> {
     /// The actual scope itself.
@@ -291,7 +291,7 @@ pub struct ProfileScopeHandle<'s> {
 impl ProfileScopeHandle<'static> {
     /// Provides a dummy handle for if you are not interested in profiling, but need to use the functions.
     #[inline]
-    pub fn dummy() -> Self { Self { scope: Arc::new(ProfileScope::new("<<<dummy>>>")), _lifetime: Default::default() } }
+    pub fn dummy() -> Self { Self { scope: Arc::new(ProfileScope::new("<<<dummy>>>")), _lifetime: PhantomData::default() } }
 }
 impl ProfileScopeHandle<'_> {
     /// Finishes a scope, by janking the handle wrapping it out-of-scope.
@@ -305,7 +305,7 @@ impl Deref for ProfileScopeHandle<'_> {
     fn deref(&self) -> &Self::Target { &self.scope }
 }
 
-/// Provides a convenience wrapper around a reference to a ProfileScope that ignores the lifetime mumbo.
+/// Provides a convenience wrapper around a reference to a [`ProfileScope`] that ignores the lifetime mumbo.
 ///
 /// If this object outlives its parent scope, there won't be any errors; _however_, note that the profilings collected afterwards will not be printed.
 #[derive(Clone, Debug)]
@@ -340,7 +340,7 @@ impl<'s> From<ProfileScopeHandle<'s>> for ProfileScopeHandleOwned {
 
 
 /***** LIBRARY *****/
-/// Defines the toplevel ProfileReport that writes to stdout or disk or whatever when it goes out-of-scope.
+/// Defines the toplevel `ProfileReport` that writes to stdout or disk or whatever when it goes out-of-scope.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ProfileReport<W: Write> {
     /// The writer that we wrap.
@@ -350,14 +350,14 @@ pub struct ProfileReport<W: Write> {
 }
 
 impl ProfileReport<File> {
-    /// Constructor for the ProfileReport that will write it to a file in a default location (`/logs/profile`) with a default name (date & time of the profile state) when it goes out-of-scope.
+    /// Constructor for the `ProfileReport` that will write it to a file in a default location (`/logs/profile`) with a default name (date & time of the profile state) when it goes out-of-scope.
     ///
     /// # Arguments
     /// - `name`: The name for the toplevel scope in this report.
     /// - `filename`: A more snake-case-like filename for the file.
     ///
     /// # Returns
-    /// A new ProfileReport instance.
+    /// A new `ProfileReport` instance.
     pub fn auto_reporting_file(name: impl Into<String>, file_name: impl Into<String>) -> Self {
         // Define the target path
         let now: DateTime<Local> = Local::now();
@@ -378,14 +378,14 @@ impl ProfileReport<File> {
     }
 }
 impl<W: Write> ProfileReport<W> {
-    /// Constructor for the ProfileReport that will write it to the given `Write`r when it goes out-of-scope.
+    /// Constructor for the `ProfileReport` that will write it to the given `Write`r when it goes out-of-scope.
     ///
     /// # Arguments
     /// - `name`: The name for the toplevel scope in this report.
     /// - `writer`: The `Write`-enabled writer that we will write to upon dropping.
     ///
     /// # Returns
-    /// A new ProfileReport instance.
+    /// A new `ProfileReport` instance.
     #[inline]
     pub fn auto_reporting(name: impl Into<String>, writer: impl Into<W>) -> Self {
         Self { writer: Some(writer.into()), scope: Some(ProfileScope::new(name)) }
@@ -430,7 +430,7 @@ impl<W: Write> Deref for ProfileReport<W> {
 
 
 
-/// Defines a scope within a ProfileReport.
+/// Defines a scope within a [`ProfileReport`].
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ProfileScope {
     /// The name of the scope.
@@ -440,22 +440,22 @@ pub struct ProfileScope {
 }
 
 impl ProfileScope {
-    /// Constructor for the ProfileScope.
+    /// Constructor for the `ProfileScope`.
     ///
     /// # Arguments
-    /// - `name`: The name of the ProfileScope.
+    /// - `name`: The name of the `ProfileScope`.
     ///
     /// # Returns
-    /// A new ProfileScope instance.
+    /// A new `ProfileScope` instance.
     pub fn new(name: impl Into<String>) -> Self { Self { name: name.into(), timings: Mutex::new(vec![]) } }
 
-    /// Returns a TimerGuard, which takes a time exactly as long as it is in scope.
+    /// Returns a [`TimerGuard`], which takes a time exactly as long as it is in scope.
     ///
     /// # Arguments
     /// - `name`: The name to set for this Timing.
     ///
     /// # Returns
-    /// A new Timer struct to take a timing.
+    /// A new [`Timer`] struct to take a timing.
     pub fn time(&self, name: impl Into<String>) -> TimerGuard {
         // Get a lock
         let mut lock: MutexGuard<Vec<ProfileTiming>> = self.timings.lock();
@@ -465,7 +465,7 @@ impl ProfileScope {
 
         // Create a TimerGuard around that timing.
         let timing: Arc<Mutex<Timing>> = lock.last().unwrap().timing().clone();
-        TimerGuard { start: Instant::now(), timing, _lifetime: Default::default() }
+        TimerGuard { start: Instant::now(), timing, _lifetime: PhantomData::default() }
     }
 
     /// Profiles the given function and adds its timing under the given name.
@@ -524,13 +524,13 @@ impl ProfileScope {
         }
     }
 
-    /// Returns a new ProfileScope that can be used to do more elaborate nested timings.
+    /// Returns a new `ProfileScope` that can be used to do more elaborate nested timings.
     ///
     /// # Arguments
     /// - `name`: The name of the new scope.
     ///
     /// # Returns
-    /// A new ProfileScope that can be used to take timings.
+    /// A new `ProfileScope` that can be used to take timings.
     pub fn nest(&self, name: impl Into<String>) -> ProfileScopeHandle {
         // Create the new scope
         let scope: Self = Self::new(name);
@@ -540,12 +540,12 @@ impl ProfileScope {
         lock.push(ProfileTiming::Scope(Arc::new(scope)));
 
         // Return a weak reference to it
-        ProfileScopeHandle { scope: lock.last().unwrap().scope().clone(), _lifetime: Default::default() }
+        ProfileScopeHandle { scope: lock.last().unwrap().scope().clone(), _lifetime: PhantomData::default() }
     }
 
-    /// Profiles the given function, but provides it with extra profile options by giving it its own ProfileScope to populate.
+    /// Profiles the given function, but provides it with extra profile options by giving it its own `ProfileScope` to populate.
     ///
-    /// Note that the ProfileScope is already automatically given a "total"-timing, representing the function's profiling. This is still untimed as long as the function sees it, obviously.
+    /// Note that the `ProfileScope` is already automatically given a "total"-timing, representing the function's profiling. This is still untimed as long as the function sees it, obviously.
     ///
     /// # Arguments
     /// - `name`: The name to set for this Timing.
@@ -577,9 +577,9 @@ impl ProfileScope {
         res
     }
 
-    /// Profiles the given future by creating a future that times it while running, but provides it with extra profile options by giving it its own ProfileScope to popupate.
+    /// Profiles the given future by creating a future that times it while running, but provides it with extra profile options by giving it its own `ProfileScope` to popupate.
     ///
-    /// Note that the ProfileScope is already automatically given a "total"-timing, representing the future's profiling. This is still untimed as long as the future sees it, obviously.
+    /// Note that the `ProfileScope` is already automatically given a "total"-timing, representing the future's profiling. This is still untimed as long as the future sees it, obviously.
     ///
     /// # Arguments
     /// - `name`: The name to set for this Timing.
@@ -625,7 +625,7 @@ impl ProfileScope {
     /// Note that this does _not_ end with a newline, so typically you want to call `writeln!()`/`println!()` on this.
     ///
     /// # Returns
-    /// A new ProfileScopeFormatter.
+    /// A new [`ProfileScopeFormatter`].
     #[inline]
     pub fn display(&self) -> ProfileScopeFormatter { ProfileScopeFormatter { scope: self, indent: 0 } }
 
@@ -637,7 +637,7 @@ impl ProfileScope {
     /// - `indent`: The number of spaces to print before each line.
     ///
     /// # Returns
-    /// A new ProfileScopeFormatter.
+    /// A new [`ProfileScopeFormatter`].
     #[inline]
     pub fn display_indented(&self, indent: usize) -> ProfileScopeFormatter { ProfileScopeFormatter { scope: self, indent } }
 }
