@@ -6,6 +6,11 @@ on:
     branches:
       - 'main'
 
+# Cancel in progress CI run if new version is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   # This one is optional, but it is nice to know if something will work as intended in the future
   check-nightly:
