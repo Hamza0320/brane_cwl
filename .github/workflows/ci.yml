@@ -86,7 +86,7 @@ jobs:
         with:
           toolchain: nightly
           components: rustfmt
-      - name: Run unit tests
+      - name: Run formatter
         run: cargo +nightly fmt --all --check
 
   doc:

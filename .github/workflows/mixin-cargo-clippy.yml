@@ -25,5 +25,5 @@ jobs:
           toolchain: ${{ inputs.rust-version }}
           components: rustfmt, clippy
 
-      - name: Run unit tests
+      - name: Run clippy
         run: cargo clippy --workspace
