@@ -1,4 +1,4 @@
-# name: Cargo Check
+name: Cargo Check & Build
 
 on:
   workflow_call:
@@ -12,15 +12,10 @@ on:
       packages:
         required: true
         type: string
-        # NOTE: This does not seem to work
-        # type: choice
-        # options:
-        #   - frontend
-        #   - workspace
 
 jobs:
   cargo-check:
-    name: Cargo Check
+    name: "${{ inputs.os }} / ${{ inputs.rust-version }} / ${{ inputs.packages }}"
     runs-on: ${{ inputs.os }}
 
     steps:

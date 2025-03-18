@@ -12,7 +12,7 @@ on:
 
 jobs:
   cargo-test:
-    name: Cargo Test (${{ inputs.os }})
+    name: "${{ inputs.os }} / ${{ inputs.rust-version }}"
     runs-on: ${{ inputs.os }}
 
     steps:
