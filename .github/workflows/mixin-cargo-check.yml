@@ -22,13 +22,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Note: Maybe this is done by rustup implicitly
-      # - name: Install rust toolchain
-      #   uses: dtolnay/rust-toolchain@master
-      #   if: inputs.rust-version != ''
-      #   with:
-      #     toolchain: ${{ inputs.rust-version }}
-
       - name: Override active rustup toolchain
         if: inputs.rust-version != ''
         run: echo "RUSTUP_TOOLCHAIN=${{ inputs.rust-version }}" >> $GITHUB_ENV
