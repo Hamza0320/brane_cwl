@@ -7,7 +7,7 @@ on:
         required: true
         type: string
       rust-version:
-        required: true
+        required: false
         type: string
 
 jobs:
@@ -19,11 +19,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ inputs.rust-version }}
-          components: rustfmt, clippy
+      # Note: Maybe this is done by rustup implicitly
+      # - name: Install rust toolchain
+      #   uses: dtolnay/rust-toolchain@master
+      #   if: inputs.rust-version != ''
+      #   with:
+      #     toolchain: ${{ inputs.rust-version }}
+
+      - name: Override active rustup toolchain
+        if: inputs.rust-version != ''
+        run: echo "RUSTUP_TOOLCHAIN=${{ inputs.rust-version }}" >> $GITHUB_ENV
+
+      - name: Show toolchain
+        run: rustup show active-toolchain
 
       - name: Install dependencies
         if: startsWith(inputs.os, 'ubuntu-')

@@ -19,11 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04]
-        rust: [stable]
     uses: ./.github/workflows/mixin-cargo-check.yml
     with:
       os: ${{ matrix.os }}
-      rust-version: ${{ matrix.rust }}
       packages: workspace
 
   # Frontend packages are compiled for windows and macOS as well
@@ -33,12 +31,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
-        rust: [stable]
 
     uses: ./.github/workflows/mixin-cargo-check.yml
     with:
       os: "${{ matrix.os }}"
-      rust-version: "${{ matrix.rust }}"
       packages: frontend
 
   test:
@@ -49,7 +45,6 @@ jobs:
     uses: ./.github/workflows/mixin-cargo-test.yml
     with:
       os: ubuntu-24.04
-      rust-version: stable
 
   test-coverage:
     needs: test
@@ -60,7 +55,6 @@ jobs:
     secrets: inherit
     with:
       os: ubuntu-24.04
-      rust-version: stable
 
   clippy:
     needs: check-stable-all
@@ -68,7 +62,6 @@ jobs:
     uses: ./.github/workflows/mixin-cargo-clippy.yml
     with:
       os: ubuntu-24.04
-      rust-version: stable
 
   # We use the nightly formatter because it has additional formatter settings
   fmt:
@@ -103,10 +96,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Install rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
       - name: "Compile documentation"
         run: cargo doc --workspace --no-deps --all-features
       - name: "Run doc tests"
@@ -117,10 +106,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
       - uses: taiki-e/install-action@cargo-hack
       - uses: taiki-e/install-action@cargo-minimal-versions
       - name: Run direct minimal versions
@@ -154,10 +139,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Install rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
       - name: "Check if lockfile update is necessary"
         # This will attempt an update all dependencies in our workspace (not transient).
         # This should not be the case, so if it can locked will prevent it and return a non-zero exit code
