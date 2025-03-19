@@ -3,7 +3,7 @@
 All notable changes to the Brane framework will be documented in this file.
 
 ## [4.0.0] - TODO
-This update sees a lot of changes. Most notably, it integrated with the [policy reasoner effort](https://github.com/epi-project/policy-reasoner) (see issue [#60](https://github.com/epi-project/brane/issues/60)).
+This update sees a lot of changes. Most notably, it integrated with the [policy reasoner effort](https://github.com/braneframework/policy-reasoner) (see issue [#60](https://github.com/braneframework/brane/issues/60)).
 
 ### Added
 - Attributes to BraneScript (e.g., `#[tag("amy.foo")]` or `#![on("foo")]`).
@@ -16,7 +16,7 @@ This update sees a lot of changes. Most notably, it integrated with the [policy 
 - `TEST_LOGGER` and `TEST_FILES` environment variables to any unit tests using `brane_shr::utilities::test_on_dsl_files*`.
   - If you give `TEST_LOGGER=1` or `TEST_LOGGER=true`, then it instantiates a `log`-capable logger ([humanlog](https://github.com/Lut99/humanlog-rs)).
   - If you give `TEST_FILES=<file1>[,<file2>[...]]`, then only the given files are tested instead of all in the `tests` folder. The files are matched by name, and then specifically an `end_of()`-call.
-- Integration with the [policy reasoner effort](https://github.com/epi-project/policy-reasoner):
+- Integration with the [policy reasoner effort](https://github.com/braneframework/policy-reasoner):
   - Part of this is:
     - Adding `brane check` to validate workflow against all checkers without running anything.
       - Note, this is currently imperfect, as checkers answer questions with pre-workflow state. This means that they may assume they won't have a dataset, while they would have while executing the workflow as a result of a previous step. To fix, needs some kind of hypothetical state specification to either `brane-api` or the `policy-reasoner`.
@@ -36,7 +36,7 @@ This update sees a lot of changes. Most notably, it integrated with the [policy 
     - Removing `branectl generate policies` as the old file is no longer used \[**breaking change**\].
 - Graceful shutdown for instance services (`brane-api`, `brane-drv`, `brane-job`, `brane-plr`, `brane-reg`).
 - Passing the `--debug` flag is now the default to the builtin `docker-compose-*.yml` files in `branectl`. If you want to revert to default behaviour, extract the compose file(s) first (`branectl extract compose ...`), change it accordingly, and then pass it during lifetime commands (e.g., `branectl start -f path/to/compose/file ...`).
-- Minimum Rust versions to all `Cargo.toml` files ([#86](https://github.com/epi-project/brane/pull/86)).
+- Minimum Rust versions to all `Cargo.toml` files ([#86](https://github.com/braneframework/brane/pull/86)).
 
 ### Changed
 - The WIR no longer has a dynamic definition table, but simply a large table spanning all scopes.
@@ -47,7 +47,7 @@ This update sees a lot of changes. Most notably, it integrated with the [policy 
 - More error prints to use a trace (i.e., `Error::source()`) rather than endless colons.
 - `brane-drv` and `brane-plr` to communicate using HTTP instead of Kafka, finally. This allows us to finally get rid of `aux-kafka` and `aux-zookeeper` \[**breaking change**\].
 - `branectl` now embeds `cfssl`/`cfssljson` binaries, either downloaded or compiled from source at compile time. The latter because 1.6.3 does not include ARM binaries by default.
-- Now relying on `serde_yml` instead of `serde_yaml` because the latter is no longer maintained ([#84](https://github.com/epi-project/brane/pull/84)).
+- Now relying on `serde_yml` instead of `serde_yaml` because the latter is no longer maintained ([#84](https://github.com/braneframework/brane/pull/84)).
 - `brane`s interface has been restructured. Several commands operating on packages and workflows have been grouped under the `package` and `workflow` subcommands respectively.
 
 ### Fixed
@@ -57,19 +57,19 @@ This update sees a lot of changes. Most notably, it integrated with the [policy 
 - CI/CD in the repository by moving most of it to scripts which we _can_ test offline.
 - The WIR using platform-specific `usize::MAX` to detect the main function. This has been replaced with `FunctionId` (`brane-ast`) and `ProgramCounter` (`brane-exe`) \[**breaking change**\].
 - `make.py` relying on buildx being the default Docker builder.
-- `make.py` reporting wrong names in `make.py --targets` for `*-image-build` targets ([#78](https://github.com/epi-project/brane/pull/78)).
-- `brane instance edit` accidentally appending `info.yml` twice ([#73](https://github.com/epi-project/brane/pull/73)).
-- Various examples not running (see [#76](https://github.com/epi-project/brane/pull/76)).
+- `make.py` reporting wrong names in `make.py --targets` for `*-image-build` targets ([#78](https://github.com/braneframework/brane/pull/78)).
+- `brane instance edit` accidentally appending `info.yml` twice ([#73](https://github.com/braneframework/brane/pull/73)).
+- Various examples not running (see [#76](https://github.com/braneframework/brane/pull/76)).
 - `cargo clippy`-warnings.
-- `Cargo.toml` not committing to patch-level minimum versions ([#92](https://github.com/epi-project/brane/pull/92)). Extra thanks to @DanielVoogsgerd for this one.
-- `specifications` not correctly setting the `rc` feature-flag for `serde` ([#90](https://github.com/epi-project/brane/pull/90)).
+- `Cargo.toml` not committing to patch-level minimum versions ([#92](https://github.com/braneframework/brane/pull/92)). Extra thanks to @DanielVoogsgerd for this one.
+- `specifications` not correctly setting the `rc` feature-flag for `serde` ([#90](https://github.com/braneframework/brane/pull/90)).
 
 ### Removed
 - `brane-aos` has been completely removed from Brane
 
 ## [3.0.0] - 2023-10-22
 ### Added
-- The `libbrane_cli.so` library (`brane-cli-c` crate), which provides C-bindings to the client functionality of the `brane` CLI tool. This can be used by other projects (e.g., [Brane IDE](https://github.com/epi-project/brane-ide)) to provide client functionality when written in C/C++.
+- The `libbrane_cli.so` library (`brane-cli-c` crate), which provides C-bindings to the client functionality of the `brane` CLI tool. This can be used by other projects (e.g., [Brane IDE](https://github.com/braneframework/brane-ide)) to provide client functionality when written in C/C++.
 - The `branectl upgrade` subcommand, which can be used to upgrade old backend-facing config files to the new style.
   - Added support for `node.yml` files
 - The `brane upgrade` subcommand, which can be used to upgrade old user-facing config files to the new style.
@@ -124,7 +124,7 @@ This update sees a lot of changes. Most notably, it integrated with the [policy 
 - `make.py` to move the download capabilities to `branectl`, allowing for a friendlier (and easier) interface.
 - `aux-xenon` to be an image in the Brane release tar (central node).
 - The general layout of `node.yml` to be more sensible (it focusses on services rather than names, ports, etc) [**breaking change**]
-- The `socksx` dependency to use [our own fork](https://github.com/epi-project/socksx) instead of [Onno's repository](https://github.com/onnovalkering/socksx) to achieve Windows compatibility for the `brane` CLI (see above).
+- The `socksx` dependency to use [our own fork](https://github.com/braneframework/socksx) instead of [Onno's repository](https://github.com/onnovalkering/socksx) to achieve Windows compatibility for the `brane` CLI (see above).
 - `main.py`'s output directory for `aux-xenon` now respects the build mode (i.e., release or `--dev`).
 - The `-m`/`--mode` option in `branectl` to `--image-dir`, for a more sensible interface.
 - `--version` to be come a positional parameter in `brane test` [**breaking change**]
@@ -179,9 +179,9 @@ This release basically sees the release of an entirely rebuilt framework. Expect
   - Fixing data- and result analysis w.r.t. loops
 
 ### Known bugs
-- [[#27](https://github.com/epi-project/brane/issues/27)] The framework cannot currently connect to domains that are accessed by IP instead of hostname (resulting in TLS errors; check [this issue](https://github.com/seanmonstar/reqwest/issues/1328)). As a workaround, use the `Hostnames` option in `node.yml` to provide hostnames for a set of IP addresses and use those instead.
-- [[#28](https://github.com/epi-project/brane/issues/28)] The REPL is quite buggy as well, often not properly carrying information between two statements. For now, as a workaround, put the loose statements in a single line to keep the information consistent.
-- [[#29](https://github.com/epi-project/brane/issues/29)] Data transfer pre-task execution is unreasonably slow, making the framework effectively unusable for use-cases which rely on iteration in BraneScript.
+- [[#27](https://github.com/braneframework/brane/issues/27)] The framework cannot currently connect to domains that are accessed by IP instead of hostname (resulting in TLS errors; check [this issue](https://github.com/seanmonstar/reqwest/issues/1328)). As a workaround, use the `Hostnames` option in `node.yml` to provide hostnames for a set of IP addresses and use those instead.
+- [[#28](https://github.com/braneframework/brane/issues/28)] The REPL is quite buggy as well, often not properly carrying information between two statements. For now, as a workaround, put the loose statements in a single line to keep the information consistent.
+- [[#29](https://github.com/braneframework/brane/issues/29)] Data transfer pre-task execution is unreasonably slow, making the framework effectively unusable for use-cases which rely on iteration in BraneScript.
 
 ## [0.6.3] - 2022-05-31
 ### Added
@@ -262,7 +262,7 @@ This release basically sees the release of an entirely rebuilt framework. Expect
 - The Brane executable making files instead of directories when making standard config directories.
 - Docker not refreshing images with the same version after building them or pushing them.
 - brane-job not passing the 'debug' flag to branelet.
-- small issues that prevented [brane-ide](https://github.com/epi-project/brane) from working.
+- small issues that prevented [brane-ide](https://github.com/braneframework/brane) from working.
 - brane-drv crashing when receiving out-of-order status update messages.
 - `kube` location kind, so it's now working and tested again.
 
