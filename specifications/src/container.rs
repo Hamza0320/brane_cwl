@@ -22,7 +22,7 @@ type Map<T> = std::collections::HashMap<String, T>;
 
 
 /***** ERRORS *****/
-/// Defines error(s) for the VolumeBind struct.
+/// Defines error(s) for the [`VolumeBind`] struct.
 #[derive(Debug)]
 pub enum VolumeBindError {
     /// The given path is not an absolute path.
@@ -43,7 +43,7 @@ impl std::error::Error for VolumeBindError {}
 
 
 
-/// Collect errors relating to the LocalContainer specification.
+/// Collect errors relating to the `LocalContainer` specification.
 #[derive(Debug)]
 pub enum LocalContainerInfoError {
     /// Could not open the target file
@@ -108,10 +108,10 @@ impl Error for ContainerInfoError {}
 
 
 /***** SPECIFICATIONS *****/
-/// A special struct that prints a given VolumeBindOption as a Docker-compatible string.
+/// A special struct that prints a given [`VolumeBindOption`] as a Docker-compatible string.
 #[derive(Debug)]
 pub struct VolumeBindOptionDockerDisplay<'a> {
-    /// The VolumeBindOption to show.
+    /// The [`VolumeBindOption`] to show.
     option: &'a VolumeBindOption,
 }
 
@@ -133,17 +133,17 @@ pub enum VolumeBindOption {
 }
 
 impl VolumeBindOption {
-    /// Returns a formatter that writes a Docker-compatible version of this VolumeBindOption.
+    /// Returns a formatter that writes a Docker-compatible version of this `VolumeBindOption`.
     #[inline]
     pub fn docker(&self) -> VolumeBindOptionDockerDisplay { VolumeBindOptionDockerDisplay { option: self } }
 }
 
 
 
-/// A special struct that prints a given VolumeBind as a Docker-compatible string.
+/// A special struct that prints a given [`VolumeBind`] as a Docker-compatible string.
 #[derive(Debug)]
 pub struct VolumeBindDockerDisplay<'a> {
-    /// The VolumeBind to show.
+    /// The [`VolumeBind`] to show.
     bind: &'a VolumeBind,
 }
 
@@ -154,10 +154,10 @@ impl Display for VolumeBindDockerDisplay<'_> {
             "{}:{}{}",
             self.bind.host.display(),
             self.bind.container.display(),
-            if !self.bind.options.is_empty() {
-                format!(":{}", self.bind.options.iter().map(|o| o.docker().to_string()).collect::<Vec<String>>().join(","))
-            } else {
+            if self.bind.options.is_empty() {
                 String::new()
+            } else {
+                format!(":{}", self.bind.options.iter().map(|o| o.docker().to_string()).collect::<Vec<String>>().join(","))
             }
         )
     }
@@ -176,15 +176,15 @@ pub struct VolumeBind {
 }
 
 impl VolumeBind {
-    /// Constructor for VolumeBind that does not initialize it with special options.
+    /// Constructor for `VolumeBind` that does not initialize it with special options.
     ///
     /// # Arguments
     /// - `host`: The path to the host folder. Note that this path must be absolute.
     /// - `container`: The path to the container folder. Note that this path must be absolute.
-    /// - `options`: The VolumeBindOptions that further customize the bind(s).
+    /// - `options`: The [`VolumeBindOption`]s that further customize the bind(s).
     ///
     /// # Returns
-    /// A new VolumeBind instance.
+    /// A new `VolumeBind` instance.
     ///
     /// # Errors
     /// This function may error if either of the given paths is not actually absolute.
@@ -204,14 +204,14 @@ impl VolumeBind {
         Ok(Self { host, container, options })
     }
 
-    /// Constructor for VolumeBind that initializes it as a read-only bind.
+    /// Constructor for `VolumeBind` that initializes it as a read-only bind.
     ///
     /// # Arguments
     /// - `host`: The path to the host folder. Note that this path must be absolute.
     /// - `container`: The path to the container folder. Note that this path must be absolute.
     ///
     /// # Returns
-    /// A new VolumeBind instance.
+    /// A new `VolumeBind` instance.
     ///
     /// # Errors
     /// This function may error if either of the given paths is not actually absolute.
@@ -220,14 +220,14 @@ impl VolumeBind {
         Self::new(host, container, vec![VolumeBindOption::ReadOnly])
     }
 
-    /// Constructor for VolumeBind that initializes it as a read/write bind.
+    /// Constructor for `VolumeBind` that initializes it as a read/write bind.
     ///
     /// # Arguments
     /// - `host`: The path to the host folder. Note that this path must be absolute.
     /// - `container`: The path to the container folder. Note that this path must be absolute.
     ///
     /// # Returns
-    /// A new VolumeBind instance.
+    /// A new `VolumeBind` instance.
     ///
     /// # Errors
     /// This function may error if either of the given paths is not actually absolute.
@@ -236,7 +236,7 @@ impl VolumeBind {
         Self::new(host, container, vec![])
     }
 
-    /// Returns a formatter that writes a Docker-compatible version of this VolumeBindOption.
+    /// Returns a formatter that writes a Docker-compatible version of this [`VolumeBindOption`].
     #[inline]
     pub fn docker(&self) -> VolumeBindDockerDisplay { VolumeBindDockerDisplay { bind: self } }
 }
@@ -369,16 +369,16 @@ pub struct LocalContainerInfo {
 }
 
 impl LocalContainerInfo {
-    /// Constructor for the LocalContainerInfo that constructs it from the given path.
+    /// Constructor for the `LocalContainerInfo` that constructs it from the given path.
     ///
     /// **Generic types**
     ///  * `P`: The Path-like type of the path given.
     ///
     /// **Arguments**
-    ///  * `path`: the Path to read the new LocalContainerInfo from.
+    ///  * `path`: the Path to read the new `LocalContainerInfo` from.
     ///
     /// **Returns**  
-    /// A new LocalContainerInfo on success, or else a LocalContainerInfoError.
+    /// A new LocalContainerInfo on success, or else a [`LocalContainerInfoError`].
     pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, LocalContainerInfoError> {
         // Convert the path-like to a Path
         let path = path.as_ref();
@@ -395,7 +395,7 @@ impl LocalContainerInfo {
         Self::from_reader(handle)
     }
 
-    /// Constructor for the LocalContainerInfo that constructs it from the given reader.
+    /// Constructor for the `LocalContainerInfo` that constructs it from the given reader.
     ///
     /// **Generic types**
     ///  * `R`: The type of the reader, which implements Read.
@@ -404,7 +404,7 @@ impl LocalContainerInfo {
     ///  * `reader`: The reader to read from. Will be consumed.
     ///
     /// **Returns**  
-    /// A new LocalContainerInfo on success, or else a LocalContainerInfoError.
+    /// A new `LocalContainerInfo` on success, or else a [`LocalContainerInfoError`].
     pub fn from_reader<R: Read>(reader: R) -> Result<Self, LocalContainerInfoError> {
         // Simply pass to serde
         match serde_yaml::from_reader(reader) {
@@ -413,16 +413,16 @@ impl LocalContainerInfo {
         }
     }
 
-    /// Writes the LocalContainerInfo to the given location.
+    /// Writes the `LocalContainerInfo` to the given location.
     ///
     /// **Generic types**
     ///  * `P`: The Path-like type of the given target location.
     ///
     /// **Arguments**
-    ///  * `path`: The target location to write to the LocalContainerInfo to.
+    ///  * `path`: The target location to write to the `LocalContainerInfo` to.
     ///
     /// **Returns**  
-    /// Nothing on success, or a LocalContainerInfoError otherwise.
+    /// Nothing on success, or a [`LocalContainerInfoError`] otherwise.
     pub fn to_path<P: AsRef<Path>>(&self, path: P) -> Result<(), LocalContainerInfoError> {
         // Convert the path-like to a path
         let path = path.as_ref();
@@ -439,7 +439,7 @@ impl LocalContainerInfo {
         self.to_writer(handle)
     }
 
-    /// Writes the LocalContainerInfo to the given writer.
+    /// Writes the `LocalContainerInfo` to the given writer.
     ///
     /// **Generic types**
     ///  * `W`: The type of the writer, which implements Write.
@@ -448,7 +448,7 @@ impl LocalContainerInfo {
     ///  * `writer`: The writer to write to. Will be consumed.
     ///
     /// **Returns**  
-    /// Nothing on success, or a LocalContainerInfoError otherwise.
+    /// Nothing on success, or a [`LocalContainerInfoError`] otherwise.
     pub fn to_writer<W: Write>(&self, writer: W) -> Result<(), LocalContainerInfoError> {
         // Simply write with serde
         match serde_yaml::to_writer(writer, self) {
@@ -476,7 +476,7 @@ impl From<&ContainerInfo> for LocalContainerInfo {
             kind: container_info.kind,
             entrypoint: container_info.entrypoint.clone(),
             actions: container_info.actions.clone(),
-            types: container_info.types.as_ref().cloned().unwrap_or_default(),
+            types: container_info.types.clone().unwrap_or_default(),
         }
     }
 }
@@ -524,9 +524,7 @@ pub struct ContainerInfo {
 }
 
 impl ContainerInfo {
-    /// **Edited: now returning ContainerInfoErrors.**
-    ///
-    /// Returns a ContainerInfo by constructing it from the file at the given path.
+    /// Returns a `ContainerInfo` by constructing it from the file at the given path.
     ///
     /// **Generic types**
     ///  * `P`: The Path-like type of the given target location.
@@ -535,7 +533,7 @@ impl ContainerInfo {
     ///  * `path`: The path to the container info file.
     ///
     /// **Returns**  
-    /// The newly constructed ContainerInfo instance on success, or a ContainerInfoError upon failure.
+    /// The newly constructed `ContainerInfo` instance on success, or a [`ContainerInfoError`] upon failure.
     pub fn from_path<P: AsRef<Path>>(path: P) -> Result<ContainerInfo, ContainerInfoError> {
         // Convert the path-like to a path
         let path = path.as_ref();
@@ -552,15 +550,13 @@ impl ContainerInfo {
         ContainerInfo::from_string(contents)
     }
 
-    /// **Edited: now returning ContainerInfoErrors.**
-    ///
     /// Returns a ContainerInfo by constructing it from the given Reader with YAML text.
     ///
     /// **Arguments**
     ///  * `r`: The reader with the contents of the raw YAML file.
     ///
     /// **Returns**  
-    /// The newly constructed ContainerInfo instance on success, or a ContainerInfoError upon failure.
+    /// The newly constructed `ContainerInfo` instance on success, or a [`ContainerInfoError`] upon failure.
     pub fn from_reader<R: Read>(r: R) -> Result<ContainerInfo, ContainerInfoError> {
         match serde_yaml::from_reader(r) {
             Ok(result) => Ok(result),
@@ -568,15 +564,13 @@ impl ContainerInfo {
         }
     }
 
-    /// **Edited: now returning ContainerInfoErrors.**
-    ///
-    /// Returns a ContainerInfo by constructing it from the given string of YAML text.
+    /// Returns a `ContainerInfo` by constructing it from the given string of YAML text.
     ///
     /// **Arguments**
     ///  * `contents`: The text contents of a raw YAML file.
     ///
     /// **Returns**  
-    /// The newly constructed ContainerInfo instance on success, or a ContainerInfoError upon failure.
+    /// The newly constructed `ContainerInfo` instance on success, or a [`ContainerInfoError`] upon failure.
     pub fn from_string(contents: String) -> Result<ContainerInfo, ContainerInfoError> {
         match serde_yaml::from_str(&contents) {
             Ok(result) => Ok(result),
@@ -584,16 +578,16 @@ impl ContainerInfo {
         }
     }
 
-    /// Writes the ContainerInfo to the given location.
+    /// Writes the `ContainerInfo` to the given location.
     ///
     /// **Generic types**
     ///  * `P`: The Path-like type of the given target location.
     ///
     /// **Arguments**
-    ///  * `path`: The target location to write to the LocalContainerInfo to.
+    ///  * `path`: The target location to write to the [`LocalContainerInfo`] to.
     ///
     /// **Returns**  
-    /// Nothing on success, or a ContainerInfoError otherwise.
+    /// Nothing on success, or a [`ContainerInfoError`] otherwise.
     pub fn to_path<P: AsRef<Path>>(&self, path: P) -> Result<(), ContainerInfoError> {
         // Convert the path-like to a path
         let path = path.as_ref();
@@ -610,7 +604,7 @@ impl ContainerInfo {
         self.to_writer(handle)
     }
 
-    /// Writes the ContainerInfo to the given writer.
+    /// Writes the `ContainerInfo` to the given writer.
     ///
     /// **Generic types**
     ///  * `W`: The type of the writer, which implements Write.
@@ -619,7 +613,7 @@ impl ContainerInfo {
     ///  * `writer`: The writer to write to. Will be consumed.
     ///
     /// **Returns**  
-    /// Nothing on success, or a ContainerInfoError otherwise.
+    /// Nothing on success, or a [`ContainerInfoError`] otherwise.
     pub fn to_writer<W: Write>(&self, writer: W) -> Result<(), ContainerInfoError> {
         // Simply write with serde
         match serde_yaml::to_writer(writer, self) {

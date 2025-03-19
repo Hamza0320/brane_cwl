@@ -237,7 +237,7 @@ impl Value {
                 let mut properties = Map::<Value>::new();
                 let data_type = String::from("anonymous");
 
-                for (name, jvalue) in o.iter() {
+                for (name, jvalue) in o {
                     properties.insert(name.clone(), Value::from_json(jvalue));
                 }
 
@@ -246,9 +246,6 @@ impl Value {
         }
     }
 
-    /* TIM */
-    /// **Edited: Changed return type to String instead of &str.**
-    ///
     /// Returns a string representation of the Value's type.
     pub fn data_type(&self) -> String {
         use Value::*;
@@ -267,8 +264,6 @@ impl Value {
         }
     }
 
-    /*******/
-
     pub fn as_bool(&self) -> Result<bool, CastError> { if let Value::Boolean(b) = self { Ok(*b) } else { Err(CastError { what: "boolean" }) } }
 
     pub fn as_f64(&self) -> Result<f64, CastError> { if let Value::Real(f) = self { Ok(*f) } else { Err(CastError { what: "real" }) } }
@@ -282,7 +277,7 @@ impl Value {
     pub fn as_json(&self) -> JValue {
         use Value::*;
         match self {
-            Array { entries, .. } => json!(entries.iter().map(|e| e.as_json()).collect::<JValue>()),
+            Array { entries, .. } => json!(entries.iter().map(Value::as_json).collect::<JValue>()),
             Boolean(b) => json!(b),
             Integer(i) => json!(i),
             Pointer { .. } => unimplemented!(),
@@ -316,7 +311,7 @@ impl Display for Value {
         use Value::*;
         let value = match self {
             Array { entries, .. } => {
-                let entries = entries.iter().map(|e| e.to_string()).collect::<Vec<String>>().join(", ");
+                let entries = entries.iter().map(std::string::ToString::to_string).collect::<Vec<String>>().join(", ");
                 format!("[{entries}]")
             },
             Boolean(b) => b.to_string(),

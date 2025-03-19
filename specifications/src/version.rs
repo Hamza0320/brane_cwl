@@ -263,17 +263,17 @@ impl Visitor<'_> for VersionVisitor {
 /// Implements the Version, which is used to keep track of package versions.
 #[derive(Clone, Copy, Debug, Eq)]
 pub struct Version {
-    /// The major version number. If all three are set to u64::MAX, is interpreted as an unresolved 'latest' version number.
+    /// The major version number. If all three are set to `u64::MAX`, is interpreted as an unresolved 'latest' version number.
     pub major: u64,
-    /// The minor version number. If all three are set to u64::MAX, is interpreted as an unresolved 'latest' version number.
+    /// The minor version number. If all three are set to `u64::MAX`, is interpreted as an unresolved 'latest' version number.
     pub minor: u64,
-    /// The patch version number. If all three are set to u64::MAX, is interpreted as an unresolved 'latest' version number.
+    /// The patch version number. If all three are set to `u64::MAX`, is interpreted as an unresolved 'latest' version number.
     pub patch: u64,
 }
 
 impl Version {
     /// Constructor for the Version.  
-    /// Note that this function panics if you try to create a 'latest' function this way; use latest() instead.
+    /// Note that this function panics if you try to create a 'latest' function this way; use [`Version::latest()`] instead.
     ///
     /// **Arguments**
     ///  * `major`: The major version number.
@@ -343,7 +343,7 @@ impl Version {
     ///  * `iter`: An iterator over resolved version numbers.
     ///
     /// **Returns**  
-    /// Nothing on success (except that this version now is equal to the latest version in the bunch), or a VersionError otherwise.
+    /// Nothing on success (except that this version now is equal to the latest version in the bunch), or a `VersionError` otherwise.
     pub fn resolve_latest<I: IntoIterator<Item = Self>>(&mut self, iter: I) -> Result<(), ResolveError> {
         // Crash if we're already resolved
         if !self.is_latest() {

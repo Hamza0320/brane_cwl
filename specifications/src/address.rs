@@ -66,7 +66,7 @@ impl Error for AddressError {
 
 
 /***** LIBRARY *****/
-/// Defines a more lenient alternative to a SocketAddr that also accepts hostnames.
+/// Defines a more lenient alternative to a [`std::net::SocketAddr`] that also accepts hostnames.
 #[derive(Clone, Debug, EnumDebug)]
 pub enum Address {
     /// It's an Ipv4 address.
@@ -363,7 +363,7 @@ pub enum AddressOpt {
     Hostname(String, Option<u16>),
 }
 impl AddressOpt {
-    /// Constructor for the AddressOpt that initializes it for the given IPv4 address.
+    /// Constructor for the `AddressOpt` that initializes it for the given IPv4 address.
     ///
     /// # Arguments
     /// - `b1`: The first byte of the IPv4 address.
@@ -373,22 +373,22 @@ impl AddressOpt {
     /// - `port`: The port for this address, if any.
     ///
     /// # Returns
-    /// A new AddressOpt instance.
+    /// A new `AddressOpt` instance.
     #[inline]
     pub fn ipv4(b1: u8, b2: u8, b3: u8, b4: u8, port: Option<u16>) -> Self { Self::Ipv4(Ipv4Addr::new(b1, b2, b3, b4), port) }
 
-    /// Constructor for the AddressOpt that initializes it for the given IPv4 address.
+    /// Constructor for the `AddressOpt` that initializes it for the given IPv4 address.
     ///
     /// # Arguments
     /// - `ipv4`: The already constructed IPv4 address to use.
     /// - `port`: The port for this address, if any.
     ///
     /// # Returns
-    /// A new AddressOpt instance.
+    /// A new `AddressOpt` instance.
     #[inline]
     pub fn from_ipv4(ipv4: impl Into<Ipv4Addr>, port: Option<u16>) -> Self { Self::Ipv4(ipv4.into(), port) }
 
-    /// Constructor for the AddressOpt that initializes it for the given IPv6 address.
+    /// Constructor for the `AddressOpt` that initializes it for the given IPv6 address.
     ///
     /// # Arguments
     /// - `b1`: The first pair of bytes of the IPv6 address.
@@ -402,39 +402,39 @@ impl AddressOpt {
     /// - `port`: The port for this address, if any.
     ///
     /// # Returns
-    /// A new AddressOpt instance.
+    /// A new `AddressOpt` instance.
     #[allow(clippy::too_many_arguments)]
     #[inline]
     pub fn ipv6(b1: u16, b2: u16, b3: u16, b4: u16, b5: u16, b6: u16, b7: u16, b8: u16, port: Option<u16>) -> Self {
         Self::Ipv6(Ipv6Addr::new(b1, b2, b3, b4, b5, b6, b7, b8), port)
     }
 
-    /// Constructor for the AddressOpt that initializes it for the given IPv6 address.
+    /// Constructor for the `AddressOpt` that initializes it for the given IPv6 address.
     ///
     /// # Arguments
     /// - `ipv6`: The already constructed IPv6 address to use.
     /// - `port`: The port for this address, if any.
     ///
     /// # Returns
-    /// A new AddressOpt instance.
+    /// A new `AddressOpt` instance.
     #[inline]
     pub fn from_ipv6(ipv6: impl Into<Ipv6Addr>, port: Option<u16>) -> Self { Self::Ipv6(ipv6.into(), port) }
 
-    /// Constructor for the AddressOpt that initializes it for the given hostname.
+    /// Constructor for the `AddressOpt` that initializes it for the given hostname.
     ///
     /// # Arguments
-    /// - `hostname`: The hostname for this AddressOpt.
+    /// - `hostname`: The hostname for this `AddressOpt`.
     /// - `port`: The port for this address, if any.
     ///
     /// # Returns
-    /// A new AddressOpt instance.
+    /// A new `AddressOpt` instance.
     #[inline]
     pub fn hostname(hostname: impl Into<String>, port: Option<u16>) -> Self { Self::Hostname(hostname.into(), port) }
 
     /// Returns the domain-part, as a (serialized) string version.
     ///
     /// # Returns
-    /// A `Cow<str>` that either contains a reference to the already String hostname, or else a newly created string that is the serialized version of an IP.
+    /// A `Cow<str>` that either contains a reference to the already `String` hostname, or else a newly created string that is the serialized version of an IP.
     #[inline]
     pub fn domain(&self) -> Cow<'_, str> {
         use AddressOpt::*;
@@ -473,35 +473,35 @@ impl AddressOpt {
         }
     }
 
-    /// Returns if this AddressOpt is an `AddressOpt::Hostname`.
+    /// Returns if this `AddressOpt` is an `AddressOpt::Hostname`.
     ///
     /// # Returns
     /// True if it is, false if it isn't.
     #[inline]
     pub fn is_hostname(&self) -> bool { matches!(self, Self::Hostname(_, _)) }
 
-    /// Returns if this AddressOpt is an `AddressOpt::Ipv4` or `AddressOpt::Ipv6`.
+    /// Returns if this `AddressOpt` is an `AddressOpt::Ipv4` or `AddressOpt::Ipv6`.
     ///
     /// # Returns
     /// True if it is, false if it isn't.
     #[inline]
     pub fn is_ip(&self) -> bool { self.is_ipv4() || self.is_ipv6() }
 
-    /// Returns if this AddressOpt is an `AddressOpt::Ipv4`.
+    /// Returns if this `AddressOpt` is an `AddressOpt::Ipv4`.
     ///
     /// # Returns
     /// True if it is, false if it isn't.
     #[inline]
     pub fn is_ipv4(&self) -> bool { matches!(self, Self::Ipv4(_, _)) }
 
-    /// Returns if this AddressOpt is an `AddressOpt::Ipv6`.
+    /// Returns if this `AddressOpt` is an `AddressOpt::Ipv6`.
     ///
     /// # Returns
     /// True if it is, false if it isn't.
     #[inline]
     pub fn is_ipv6(&self) -> bool { matches!(self, Self::Ipv6(_, _)) }
 
-    /// Returns a formatter that deterministically and parseably serializes the AddressOpt.
+    /// Returns a formatter that deterministically and parseably serializes the `AddressOpt`.
     #[inline]
     pub fn serialize(&self) -> impl '_ + Display { self }
 }
@@ -548,7 +548,7 @@ impl<'de> Deserialize<'de> for AddressOpt {
     where
         D: Deserializer<'de>,
     {
-        /// Defines the visitor for the AddressOpt
+        /// Defines the visitor for the `AddressOpt`
         struct AddressOptVisitor;
         impl Visitor<'_> for AddressOptVisitor {
             type Value = AddressOpt;
