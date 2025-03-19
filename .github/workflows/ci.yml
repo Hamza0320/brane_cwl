@@ -95,7 +95,6 @@ jobs:
           components: rustfmt
       - name: Show toolchain
         run: rustup show active-toolchain
-      - uses: Swatinem/rust-cache@v2
       - name: Run formatter
         run: cargo +nightly fmt --all --check
 
@@ -115,7 +114,6 @@ jobs:
         uses: actions/checkout@v4
       - name: Show toolchain
         run: rustup show active-toolchain
-      - uses: Swatinem/rust-cache@v2
       - name: "Compile documentation"
         run: cargo doc --workspace --no-deps --all-features
       - name: "Run doc tests"
@@ -131,7 +129,8 @@ jobs:
       - uses: taiki-e/install-action@cargo-minimal-versions
       - name: Show toolchain
         run: rustup show active-toolchain
-      - uses: Swatinem/rust-cache@v2
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
       - name: Run direct minimal versions
         run: cargo minimal-versions check --workspace --direct
 
@@ -149,9 +148,8 @@ jobs:
         run: cargo binstall --no-confirm cargo-msrv --version ^0.16
       - name: Show toolchain
         run: rustup show active-toolchain
-
-      - uses: Swatinem/rust-cache@v2
-
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
       - name: Install dependencies
         run: sudo apt update; sudo apt install -y yq
       - name: "Run minimum supported rust version"
@@ -170,7 +168,6 @@ jobs:
         uses: actions/checkout@v4
       - name: Show toolchain
         run: rustup show active-toolchain
-      - uses: Swatinem/rust-cache@v2
       - name: "Check if lockfile update is necessary"
         # This will attempt an update all dependencies in our workspace (not transient).
         # This should not be the case, so if it can locked will prevent it and return a non-zero exit code
