@@ -122,6 +122,7 @@ jobs:
         run: cargo test --workspace --doc
 
   direct-minimal-versions:
+    needs: check-stable-all
     name: "Direct minimal versions"
     runs-on: ubuntu-24.04
     steps:
