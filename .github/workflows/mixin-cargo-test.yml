@@ -33,13 +33,17 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
-      - name: Test with coverage
-        run: cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@cargo-nextest
+
+      - name: Run unit tests with coverage
+        run: cargo llvm-cov nextest --lib --workspace --codecov --output-path codecov-unittests.json
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: BraneFramework/brane
-          files: codecov.json
+          flags: tests,unit-tests
+          files: codecov-unittests.json
           fail_ci_if_error: true
