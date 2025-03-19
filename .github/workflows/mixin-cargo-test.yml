@@ -39,6 +39,9 @@ jobs:
       - name: Run unit tests with coverage
         run: cargo llvm-cov nextest --lib --workspace --codecov --output-path codecov-unittests.json
 
+      - name: Run doctests
+        run: cargo test --workspace --doc
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
