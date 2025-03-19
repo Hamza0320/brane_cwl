@@ -65,17 +65,7 @@ jobs:
     needs: check-stable-all
     name: "Tests"
     # TODO: Run on macOS and windows as well using matrix (if this provides any value)
-
     uses: ./.github/workflows/mixin-cargo-test.yml
-    with:
-      os: ubuntu-24.04
-
-  test-coverage:
-    needs: test
-    name: "Test coverage"
-    # TODO: Run on macOS and windows as well using matrix (if this provides any value)
-
-    uses: ./.github/workflows/mixin-cargo-llvm-cov.yml
     secrets: inherit
     with:
       os: ubuntu-24.04
