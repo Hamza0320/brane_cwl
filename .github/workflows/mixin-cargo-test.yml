@@ -30,7 +30,23 @@ jobs:
         if: startsWith(inputs.os, 'ubuntu-')
         run: sudo apt update && sudo apt install -y libsqlite3-dev
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
 
-      - name: Run tests
-        run: cargo test --workspace
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@cargo-nextest
+
+      - name: Run unit tests with coverage
+        run: cargo llvm-cov nextest --lib --workspace --codecov --output-path codecov-unittests.json
+
+      - name: Run doctests
+        run: cargo test --workspace --doc
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: BraneFramework/brane
+          flags: tests,unit-tests
+          files: codecov-unittests.json
+          fail_ci_if_error: true

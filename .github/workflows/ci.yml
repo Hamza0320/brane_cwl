@@ -11,53 +11,74 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+  RUSTDOCFLAGS: -Dwarnings
+
 jobs:
   # The complete workspace only needs to be compiled for linux x86
-  check-stable-all:
-    name: "Check & Build"
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04]
+  check-stable-linux:
+    name: "Check"
     uses: ./.github/workflows/mixin-cargo-check.yml
     with:
-      os: ${{ matrix.os }}
+      os: ubuntu-24.04
       packages: workspace
+      cache: true
 
-  # Frontend packages are compiled for windows and macOS as well
-  check-stable-frontend:
-    name: "Check & Build"
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest]
+  build-stable-linux:
+    needs: check-stable-linux
+    name: "Build"
+    uses: ./.github/workflows/mixin-cargo-build.yml
+    with:
+      os: ubuntu-24.04
+      packages: workspace
+      cache: true
 
+  check-stable-windows:
+    name: "Check"
     uses: ./.github/workflows/mixin-cargo-check.yml
     with:
-      os: "${{ matrix.os }}"
+      os: windows-latest
+      packages: frontend
+      cache: true
+
+  build-stable-windows:
+    needs: check-stable-windows
+    name: "Build"
+    uses: ./.github/workflows/mixin-cargo-build.yml
+    with:
+      os: windows-latest
+      packages: frontend
+      cache: true
+
+  check-stable-macos:
+    name: "Check"
+    uses: ./.github/workflows/mixin-cargo-check.yml
+    with:
+      os: macos-latest
+      packages: frontend
+
+  build-stable-macos:
+    needs: check-stable-macos
+    name: "Build"
+    uses: ./.github/workflows/mixin-cargo-build.yml
+    with:
+      os: macos-latest
       packages: frontend
 
   test:
-    needs: check-stable-all
+    needs: check-stable-linux
     name: "Tests"
     # TODO: Run on macOS and windows as well using matrix (if this provides any value)
-
     uses: ./.github/workflows/mixin-cargo-test.yml
-    with:
-      os: ubuntu-24.04
-
-  test-coverage:
-    needs: test
-    name: "Test coverage"
-    # TODO: Run on macOS and windows as well using matrix (if this provides any value)
-
-    uses: ./.github/workflows/mixin-cargo-llvm-cov.yml
     secrets: inherit
     with:
       os: ubuntu-24.04
 
   clippy:
-    needs: check-stable-all
+    needs: check-stable-linux
     name: "Clippy"
     uses: ./.github/workflows/mixin-cargo-clippy.yml
     with:
@@ -81,7 +102,6 @@ jobs:
           components: rustfmt
       - name: Show toolchain
         run: rustup show active-toolchain
-      - uses: Swatinem/rust-cache@v2
       - name: Run formatter
         run: cargo +nightly fmt --all --check
 
@@ -101,13 +121,13 @@ jobs:
         uses: actions/checkout@v4
       - name: Show toolchain
         run: rustup show active-toolchain
-      - uses: Swatinem/rust-cache@v2
       - name: "Compile documentation"
         run: cargo doc --workspace --no-deps --all-features
       - name: "Run doc tests"
         run: cargo test --workspace --doc
 
   direct-minimal-versions:
+    needs: check-stable-linux
     name: "Direct minimal versions"
     runs-on: ubuntu-24.04
     steps:
@@ -116,13 +136,14 @@ jobs:
       - uses: taiki-e/install-action@cargo-minimal-versions
       - name: Show toolchain
         run: rustup show active-toolchain
-      - uses: Swatinem/rust-cache@v2
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
       - name: Run direct minimal versions
         run: cargo minimal-versions check --workspace --direct
 
   msrv:
     # Lets first make sure it works with the most recent version before we attempt all supported versions
-    needs: check-stable-all
+    needs: check-stable-linux
     name: "Minimum supported rust version"
     runs-on: ubuntu-24.04
     steps:
@@ -134,9 +155,8 @@ jobs:
         run: cargo binstall --no-confirm cargo-msrv --version ^0.16
       - name: Show toolchain
         run: rustup show active-toolchain
-
-      - uses: Swatinem/rust-cache@v2
-
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
       - name: Install dependencies
         run: sudo apt update; sudo apt install -y yq
       - name: "Run minimum supported rust version"
@@ -155,7 +175,6 @@ jobs:
         uses: actions/checkout@v4
       - name: Show toolchain
         run: rustup show active-toolchain
-      - uses: Swatinem/rust-cache@v2
       - name: "Check if lockfile update is necessary"
         # This will attempt an update all dependencies in our workspace (not transient).
         # This should not be the case, so if it can locked will prevent it and return a non-zero exit code
