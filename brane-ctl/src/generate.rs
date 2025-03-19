@@ -1333,7 +1333,7 @@ pub async fn policy_database(fix_dirs: bool, path: PathBuf, branch: String) -> R
     // NOTE: We're not using `_dir`, but keep it to prevent the directory from being removed once the objects gets dropped
     let (_dir, migrations): (TempDir, FileBasedMigrations) = {
         // Prepare the input URL and output directory
-        let url = format!("https://api.github.com/repos/epi-project/policy-reasoner/tarball/{branch}");
+        let url = format!("https://api.github.com/repos/braneframework/policy-reasoner/tarball/{branch}");
         let dir = match TempDir::new() {
             Ok(dir) => dir,
             Err(err) => {

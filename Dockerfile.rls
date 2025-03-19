@@ -11,7 +11,7 @@
 ##### BUILD STAGE #####
 ### This file will act as the bottom for both builder images
 FROM rust:1 AS build-common
-LABEL org.opencontainers.image.source https://github.com/epi-project/brane
+LABEL org.opencontainers.image.source https://github.com/braneframework/brane
 
 # Install build dependencies (that are not in the rust image already)
 RUN apt-get update && apt-get install -y \
@@ -28,7 +28,7 @@ COPY . /build
 
 ### This file does the Brane services
 FROM build-common AS build-brane
-LABEL org.opencontainers.image.source https://github.com/epi-project/brane
+LABEL org.opencontainers.image.source https://github.com/braneframework/brane
 
 # Build optimized binaries
 WORKDIR /build
@@ -57,14 +57,14 @@ ENTRYPOINT [ "/bin/bash" ]
 
 ### This file does the policy reasoner service
 FROM build-common AS build-policy-reasoner
-LABEL org.opencontainers.image.source https://github.com/epi-project/brane
+LABEL org.opencontainers.image.source https://github.com/braneframework/brane
 
 # Fetch the reasoner code next
 WORKDIR /
 ARG REASONER=eflint
 ARG REASONER_BRANCH=main
-ADD "http://github.com/epi-project/policy-reasoner/zipball/${REASONER_BRANCH}/" /policy-reasoner.zip
-RUN unzip /policy-reasoner.zip && mv /epi-project-policy-reasoner* /policy-reasoner
+ADD "http://github.com/braneframework/policy-reasoner/zipball/${REASONER_BRANCH}/" /policy-reasoner.zip
+RUN unzip /policy-reasoner.zip && mv /braneframework-policy-reasoner* /policy-reasoner
 
 # Touch a `policy.db` into action to avoid the policy reasoner's `build.rs` building it for us (unnecessary)
 RUN mkdir -p /policy-reasoner/data && touch /policy-reasoner/data/policy.db
@@ -110,7 +110,7 @@ RUN PATH="$PATH:/go/bin" \
 ##### BASE IMAGE #####
 # This image defines the base image for all Brane service images.
 FROM ubuntu:22.04 AS brane-base
-LABEL org.opencontainers.image.source https://github.com/epi-project/brane
+LABEL org.opencontainers.image.source https://github.com/braneframework/brane
 
 # Add the log directory
 RUN mkdir -p /logs/profile
