@@ -19,6 +19,7 @@ jobs:
     with:
       os: ubuntu-24.04
       packages: workspace
+      cache: true
 
   build-stable-linux:
     needs: check-stable-linux
@@ -27,6 +28,7 @@ jobs:
     with:
       os: ubuntu-24.04
       packages: workspace
+      cache: true
 
   check-stable-windows:
     name: "Check"
@@ -34,6 +36,7 @@ jobs:
     with:
       os: windows-latest
       packages: frontend
+      cache: true
 
   build-stable-windows:
     needs: check-stable-windows
@@ -42,6 +45,7 @@ jobs:
     with:
       os: windows-latest
       packages: frontend
+      cache: true
 
   check-stable-macos:
     name: "Check"

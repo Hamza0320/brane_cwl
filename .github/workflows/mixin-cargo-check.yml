@@ -12,6 +12,10 @@ on:
       packages:
         required: true
         type: string
+      cache:
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   cargo-check:
@@ -37,6 +41,7 @@ jobs:
         uses: taiki-e/install-action@cargo-hack
 
       - name: Cache dependencies
+        if: inputs.cache
         uses: Swatinem/rust-cache@v2
 
       - name: Check project (Workspace)
