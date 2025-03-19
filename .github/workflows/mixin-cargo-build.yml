@@ -1,4 +1,4 @@
-name: Cargo Check
+name: Cargo Build
 
 on:
   workflow_call:
@@ -14,7 +14,7 @@ on:
         type: string
 
 jobs:
-  cargo-check:
+  cargo-build:
     name: "${{ inputs.os }} / ${{ inputs.rust-version }} / ${{ inputs.packages }}"
     runs-on: ${{ inputs.os }}
 
@@ -39,10 +39,10 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Check project (Workspace)
+      - name: Build project (Workspace)
         if: inputs.packages == 'workspace'
-        run: cargo hack --feature-powerset check --workspace
+        run: cargo build --workspace
 
-      - name: Check project (Frontend)
+      - name: Build project (Frontend)
         if: inputs.packages == 'frontend'
-        run: cargo hack --feature-powerset check --package brane-cli --package brane-cc --package brane-cli-c
+        run: cargo build --package brane-cli --package brane-cc --package brane-cli-c

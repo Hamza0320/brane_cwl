@@ -14,7 +14,7 @@ concurrency:
 jobs:
   # The complete workspace only needs to be compiled for linux x86
   check-stable-all:
-    name: "Check & Build"
+    name: "Check"
     strategy:
       fail-fast: false
       matrix:
@@ -24,9 +24,21 @@ jobs:
       os: ${{ matrix.os }}
       packages: workspace
 
+  build-stable-all:
+    needs: check-stable-all
+    name: "Build"
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04]
+    uses: ./.github/workflows/mixin-cargo-build.yml
+    with:
+      os: ${{ matrix.os }}
+      packages: workspace
+
   # Frontend packages are compiled for windows and macOS as well
   check-stable-frontend:
-    name: "Check & Build"
+    name: "Check"
     strategy:
       fail-fast: false
       matrix:
@@ -35,6 +47,18 @@ jobs:
     uses: ./.github/workflows/mixin-cargo-check.yml
     with:
       os: "${{ matrix.os }}"
+      packages: frontend
+
+  build-stable-frontend:
+    needs: check-stable-frontend
+    name: "Build"
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    uses: ./.github/workflows/mixin-cargo-build.yml
+    with:
+      os: ${{ matrix.os }}
       packages: frontend
 
   test:
