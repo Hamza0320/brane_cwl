@@ -19,7 +19,7 @@ on:
 
 jobs:
   cargo-build:
-    name: "${{ inputs.os }} / ${{ inputs.rust-version }} / ${{ inputs.packages }}"
+    name: "${{ inputs.packages }} / ${{ inputs.os }}"
     runs-on: ${{ inputs.os }}
 
     steps:
