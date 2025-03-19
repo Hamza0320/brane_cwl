@@ -29,5 +29,7 @@ jobs:
       - name: Install Clippy
         run: rustup component add clippy
 
+      - uses: Swatinem/rust-cache@v2
+
       - name: Run clippy
         run: cargo clippy --workspace

@@ -36,6 +36,8 @@ jobs:
       - name: Install Cargo Hack
         uses: taiki-e/install-action@cargo-hack
 
+      - uses: Swatinem/rust-cache@v2
+
       - name: Check project (Workspace)
         if: inputs.packages == 'workspace'
         run: cargo hack --feature-powerset check --workspace
