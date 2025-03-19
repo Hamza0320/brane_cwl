@@ -13,56 +13,53 @@ concurrency:
 
 jobs:
   # The complete workspace only needs to be compiled for linux x86
-  check-stable-all:
+  check-stable-linux:
     name: "Check"
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04]
     uses: ./.github/workflows/mixin-cargo-check.yml
     with:
-      os: ${{ matrix.os }}
+      os: ubuntu-24.04
       packages: workspace
 
-  build-stable-all:
-    needs: check-stable-all
+  build-stable-linux:
+    needs: check-stable-linux
     name: "Build"
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04]
     uses: ./.github/workflows/mixin-cargo-build.yml
     with:
-      os: ${{ matrix.os }}
+      os: ubuntu-24.04
       packages: workspace
 
-  # Frontend packages are compiled for windows and macOS as well
-  check-stable-frontend:
+  check-stable-windows:
     name: "Check"
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest]
-
     uses: ./.github/workflows/mixin-cargo-check.yml
     with:
-      os: "${{ matrix.os }}"
+      os: windows-latest
       packages: frontend
 
-  build-stable-frontend:
-    needs: check-stable-frontend
+  build-stable-windows:
+    needs: check-stable-windows
     name: "Build"
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest]
     uses: ./.github/workflows/mixin-cargo-build.yml
     with:
-      os: ${{ matrix.os }}
+      os: windows-latest
+      packages: frontend
+
+  check-stable-macos:
+    name: "Check"
+    uses: ./.github/workflows/mixin-cargo-check.yml
+    with:
+      os: macos-latest
+      packages: frontend
+
+  build-stable-macos:
+    needs: check-stable-macos
+    name: "Build"
+    uses: ./.github/workflows/mixin-cargo-build.yml
+    with:
+      os: macos-latest
       packages: frontend
 
   test:
-    needs: check-stable-all
+    needs: check-stable-linux
     name: "Tests"
     # TODO: Run on macOS and windows as well using matrix (if this provides any value)
     uses: ./.github/workflows/mixin-cargo-test.yml
@@ -71,7 +68,7 @@ jobs:
       os: ubuntu-24.04
 
   clippy:
-    needs: check-stable-all
+    needs: check-stable-linux
     name: "Clippy"
     uses: ./.github/workflows/mixin-cargo-clippy.yml
     with:
@@ -120,7 +117,7 @@ jobs:
         run: cargo test --workspace --doc
 
   direct-minimal-versions:
-    needs: check-stable-all
+    needs: check-stable-linux
     name: "Direct minimal versions"
     runs-on: ubuntu-24.04
     steps:
@@ -136,7 +133,7 @@ jobs:
 
   msrv:
     # Lets first make sure it works with the most recent version before we attempt all supported versions
-    needs: check-stable-all
+    needs: check-stable-linux
     name: "Minimum supported rust version"
     runs-on: ubuntu-24.04
     steps:
