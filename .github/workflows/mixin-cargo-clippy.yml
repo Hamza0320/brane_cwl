@@ -1,4 +1,4 @@
-name: Common Workflow
+name: Cargo Clippy
 
 on:
   workflow_call:
@@ -12,7 +12,7 @@ on:
 
 jobs:
   cargo-clippy:
-    name: Cargo Clippy (${{ inputs.os }})
+    name: "${{ inputs.os }} / ${{ inputs.rust-version }}"
     runs-on: ${{ inputs.os }}
 
     steps:
@@ -25,5 +25,5 @@ jobs:
           toolchain: ${{ inputs.rust-version }}
           components: rustfmt, clippy
 
-      - name: Run unit tests
+      - name: Run clippy
         run: cargo clippy --workspace

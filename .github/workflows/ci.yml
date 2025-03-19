@@ -6,19 +6,29 @@ on:
     branches:
       - 'main'
 
+# Cancel in progress CI run if new version is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   # The complete workspace only needs to be compiled for linux x86
   check-stable-all:
-    name: "Check & Build / All"
+    name: "Check & Build"
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04]
+        rust: [stable]
     uses: ./.github/workflows/mixin-cargo-check.yml
     with:
-      os: ubuntu-24.04
-      rust-version: stable
+      os: ${{ matrix.os }}
+      rust-version: ${{ matrix.rust }}
       packages: workspace
 
   # Frontend packages are compiled for windows and macOS as well
   check-stable-frontend:
-    name: "Check & Build / Frontend"
+    name: "Check & Build"
     strategy:
       fail-fast: false
       matrix:
@@ -54,9 +64,7 @@ jobs:
 
   clippy:
     needs: check-stable-all
-    name: "Clippy (Stable)"
-    # NOTE: Maybe we should run this on macOS and windows, not sure if it is worth it
-
+    name: "Clippy"
     uses: ./.github/workflows/mixin-cargo-clippy.yml
     with:
       os: ubuntu-24.04
@@ -66,11 +74,20 @@ jobs:
   fmt:
     # Note that we don't depend on check in stable or nightly
     # as code need not compile for the formatter to work
-    name: "Formatter"
-    uses: ./.github/workflows/mixin-cargo-fmt.yml
-    with:
-      os: ubuntu-24.04
-      rust-version: nightly
+    name: "Formatting"
+
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          components: rustfmt
+      - name: Run formatter
+        run: cargo +nightly fmt --all --check
 
   doc:
     # Note that we don't depend on check in stable or nightly
@@ -96,7 +113,7 @@ jobs:
         run: cargo test --workspace --doc
 
   direct-minimal-versions:
-    name: "Direct Minimal versions"
+    name: "Direct minimal versions"
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
