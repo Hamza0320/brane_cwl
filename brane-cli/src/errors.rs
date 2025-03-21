@@ -780,7 +780,6 @@ pub enum DataError {
         err:  std::io::Error,
     },
     /// Failed to extract the downloaded tar.
-    // TarExtractError{ source: PathBuf, target: PathBuf, err: std::io::Error },
     TarExtractError {
         err: brane_shr::fs::Error,
     },
