@@ -882,7 +882,7 @@ impl Error for DataError {
             // TarOpenError{ err, .. } => Some(err),
             TarWriteError { err, .. } => Some(err),
             // TarExtractError{ err, .. } => Some(err),
-            TarExtractError { .. } => None,
+            TarExtractError { err, .. } => Some(err),
 
             DatasetsError { .. } => None,
             LocalDataIndexError { .. } => None,
