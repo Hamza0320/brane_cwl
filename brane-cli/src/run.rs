@@ -79,12 +79,9 @@ pub async fn initialize_instance<O: Write, E: Write>(
 
     // Connect to the server with gRPC
     debug!("Connecting to driver '{}'...", drv_endpoint);
-    let mut client: DriverServiceClient = match DriverServiceClient::connect(drv_endpoint.to_string()).await {
-        Ok(client) => client,
-        Err(err) => {
-            return Err(Error::ClientConnectError { address: drv_endpoint.into(), err });
-        },
-    };
+    let mut client = DriverServiceClient::connect(drv_endpoint.to_string())
+        .await
+        .map_err(|source| Error::ClientConnectError { address: drv_endpoint.into(), source })?;
 
     // Either use the given Session UUID or create a new one (with matching session)
     let session: AppId = if let Some(attach) = attach {
@@ -93,22 +90,12 @@ pub async fn initialize_instance<O: Write, E: Write>(
     } else {
         // Setup a new session
         let request = CreateSessionRequest {};
-        let reply = match client.create_session(request).await {
-            Ok(reply) => reply,
-            Err(err) => {
-                return Err(Error::SessionCreateError { address: drv_endpoint.into(), err });
-            },
-        };
+        let reply = client.create_session(request).await.map_err(|source| Error::SessionCreateError { address: drv_endpoint.into(), source })?;
 
         // Return the UUID of this session
         let raw: String = reply.into_inner().uuid;
         debug!("Using new session '{}'", raw);
-        match AppId::from_str(&raw) {
-            Ok(session) => session,
-            Err(err) => {
-                return Err(Error::AppIdError { address: drv_endpoint.into(), raw, err: Box::new(err) });
-            },
-        }
+        AppId::from_str(&raw).map_err(|source| Error::AppIdError { address: drv_endpoint.into(), raw, source: Box::new(source) })?
     };
 
     // Prepare some states & options used across loops
@@ -153,23 +140,13 @@ pub async fn run_instance<O: Write, E: Write>(
     let drv_endpoint: &str = drv_endpoint.as_ref();
 
     // Serialize the workflow
-    let sworkflow: String = match serde_json::to_string(&workflow) {
-        Ok(sworkflow) => sworkflow,
-        Err(err) => {
-            return Err(Error::WorkflowSerializeError { err });
-        },
-    };
+    let sworkflow: String = serde_json::to_string(&workflow).map_err(|source| Error::WorkflowSerializeError { source })?;
 
     // Prepare the request to execute this command
     let request = ExecuteRequest { uuid: state.session.to_string(), input: sworkflow };
 
     // Run it
-    let response = match state.client.execute(request).await {
-        Ok(response) => response,
-        Err(err) => {
-            return Err(Error::CommandRequestError { address: drv_endpoint.into(), err });
-        },
-    };
+    let response = state.client.execute(request).await.map_err(|source| Error::CommandRequestError { address: drv_endpoint.into(), source })?;
     let mut stream = response.into_inner();
 
     // Switch on the type of message that the remote returned
@@ -190,17 +167,13 @@ pub async fn run_instance<O: Write, E: Write>(
                 // The remote send us a normal text message
                 if let Some(stdout) = reply.stdout {
                     debug!("Remote returned stdout");
-                    if let Err(err) = write!(&mut state.stdout, "{stdout}") {
-                        return Err(Error::WriteError { err });
-                    }
+                    write!(&mut state.stdout, "{stdout}").map_err(|source| Error::WriteError { source })?;
                 }
 
                 // The remote send us an error
                 if let Some(stderr) = reply.stderr {
                     debug!("Remote returned error");
-                    if let Err(err) = writeln!(&mut state.stderr, "{stderr}") {
-                        return Err(Error::WriteError { err });
-                    }
+                    writeln!(&mut state.stderr, "{stderr}").map_err(|source| Error::WriteError { source })?;
                 }
 
                 // Update the value to the latest if one is sent
@@ -208,12 +181,8 @@ pub async fn run_instance<O: Write, E: Write>(
                     debug!("Remote returned new value: '{}'", value);
 
                     // Parse it
-                    let value: FullValue = match serde_json::from_str(&value) {
-                        Ok(value) => value,
-                        Err(err) => {
-                            return Err(Error::ValueParseError { address: drv_endpoint.into(), raw: value, err });
-                        },
-                    };
+                    let value: FullValue =
+                        serde_json::from_str(&value).map_err(|source| Error::ValueParseError { address: drv_endpoint.into(), raw: value, source })?;
 
                     // Set the result, packed
                     res = value;
@@ -226,8 +195,8 @@ pub async fn run_instance<O: Write, E: Write>(
                 }
             },
             Err(status) => match status.code() {
-                Code::PermissionDenied => return Err(Error::ExecDenied { err: Box::new(StringError(status.message().into())) }),
-                _ => return Err(Error::ExecError { err: Box::new(StringError(status.message().into())) }),
+                Code::PermissionDenied => return Err(Error::ExecDenied { source: Box::new(StringError(status.message().into())) }),
+                _ => return Err(Error::ExecError { source: Box::new(StringError(status.message().into())) }),
             },
             Ok(None) => {
                 // Stream closed by the remote for some rason
@@ -273,6 +242,7 @@ pub async fn process_instance(
     if result != FullValue::Void {
         println!("\nWorkflow returned value {}", style(format!("'{result}'")).bold().cyan());
 
+        // FIXME: Clean up this blob
         // Treat some values special
         match result {
             // Print sommat additional if it's an intermediate result.
@@ -287,20 +257,11 @@ pub async fn process_instance(
 
                 // Fetch a new, local DataIndex to get up-to-date entries
                 let data_addr: String = format!("{api_endpoint}/data/info");
-                let index: DataIndex = match brane_tsk::api::get_data_index(&data_addr).await {
-                    Ok(dindex) => dindex,
-                    Err(err) => {
-                        return Err(Error::RemoteDataIndexError { address: data_addr, err });
-                    },
-                };
+                let index: DataIndex =
+                    brane_tsk::api::get_data_index(&data_addr).await.map_err(|source| Error::RemoteDataIndexError { address: data_addr, source })?;
 
                 // Fetch the method of its availability
-                let info: &DataInfo = match index.get(&name) {
-                    Some(info) => info,
-                    None => {
-                        return Err(Error::UnknownDataset { name: name.into() });
-                    },
-                };
+                let info: &DataInfo = index.get(&name).ok_or_else(|| Error::UnknownDataset { name: name.to_string() })?;
                 let access: AccessKind = match info.access.get(LOCALHOST) {
                     Some(access) => access.clone(),
                     None => {
@@ -310,8 +271,8 @@ pub async fn process_instance(
                             Ok(None) => {
                                 return Err(Error::UnavailableDataset { name: name.into(), locs: info.access.keys().cloned().collect() });
                             },
-                            Err(err) => {
-                                return Err(Error::DataDownloadError { err });
+                            Err(source) => {
+                                return Err(Error::DataDownloadError { source });
                             },
                         }
                     },
@@ -331,10 +292,6 @@ pub async fn process_instance(
     // Done
     Ok(())
 }
-
-
-
-
 
 /***** AUXILLARY *****/
 /// A helper struct that contains what we need to know about a compiler + VM state for the dummy use-case.
@@ -402,8 +359,6 @@ pub struct InstanceVmState<O, E> {
     pub client:  DriverServiceClient,
 }
 
-
-
 /// Function that prepares a local, offline virtual machine that never runs any jobs.
 ///
 /// It does read the local index to determine if packages are legal.
@@ -418,32 +373,22 @@ pub struct InstanceVmState<O, E> {
 /// This function errors if we failed to get the new package indices or other information.
 pub fn initialize_dummy_vm(options: ParserOptions) -> Result<DummyVmState, Error> {
     // Get the directory with the packages
-    let packages_dir = match ensure_packages_dir(false) {
-        Ok(dir) => dir,
-        Err(err) => {
-            return Err(Error::PackagesDirError { err });
-        },
-    };
+    let packages_dir = ensure_packages_dir(false).map_err(|source| Error::PackagesDirError { source })?;
     // Get the directory with the datasets
-    let datasets_dir = match ensure_datasets_dir(false) {
-        Ok(dir) => dir,
-        Err(err) => {
-            return Err(Error::DatasetsDirError { err });
-        },
-    };
+    let datasets_dir = ensure_datasets_dir(false).map_err(|source| Error::DatasetsDirError { source })?;
 
     // Get the package index for the local repository
     let package_index: Arc<PackageIndex> = match brane_tsk::local::get_package_index(packages_dir) {
         Ok(index) => Arc::new(index),
-        Err(err) => {
-            return Err(Error::LocalPackageIndexError { err });
+        Err(source) => {
+            return Err(Error::LocalPackageIndexError { source });
         },
     };
     // Get the data index for the local repository
     let data_index: Arc<DataIndex> = match brane_tsk::local::get_data_index(datasets_dir) {
         Ok(index) => Arc::new(index),
-        Err(err) => {
-            return Err(Error::LocalDataIndexError { err });
+        Err(source) => {
+            return Err(Error::LocalDataIndexError { source });
         },
     };
 
@@ -484,56 +429,31 @@ pub fn initialize_dummy_vm(options: ParserOptions) -> Result<DummyVmState, Error
 /// This function errors if we failed to get the new package indices or other information.
 pub fn initialize_offline_vm(parse_opts: ParserOptions, docker_opts: DockerOptions, keep_containers: bool) -> Result<OfflineVmState, Error> {
     // Get the directory with the packages
-    let packages_dir = match ensure_packages_dir(false) {
-        Ok(dir) => dir,
-        Err(err) => {
-            return Err(Error::PackagesDirError { err });
-        },
-    };
+    let packages_dir = ensure_packages_dir(false).map_err(|source| Error::PackagesDirError { source })?;
     // Get the directory with the datasets
-    let datasets_dir = match ensure_datasets_dir(false) {
-        Ok(dir) => dir,
-        Err(err) => {
-            return Err(Error::DatasetsDirError { err });
-        },
-    };
+    let datasets_dir = ensure_datasets_dir(false).map_err(|source| Error::DatasetsDirError { source })?;
 
     // Get the package index for the local repository
     let package_index: Arc<PackageIndex> = match brane_tsk::local::get_package_index(packages_dir) {
         Ok(index) => Arc::new(index),
-        Err(err) => {
-            return Err(Error::LocalPackageIndexError { err });
+        Err(source) => {
+            return Err(Error::LocalPackageIndexError { source });
         },
     };
     // Get the data index for the local repository
     let data_index: Arc<DataIndex> = match brane_tsk::local::get_data_index(datasets_dir) {
         Ok(index) => Arc::new(index),
-        Err(err) => {
-            return Err(Error::LocalDataIndexError { err });
+        Err(source) => {
+            return Err(Error::LocalDataIndexError { source });
         },
     };
 
     // Get the local package & dataset directories
-    let packages_dir: PathBuf = match get_packages_dir() {
-        Ok(dir) => dir,
-        Err(err) => {
-            return Err(Error::PackagesDirError { err });
-        },
-    };
-    let datasets_dir: PathBuf = match get_datasets_dir() {
-        Ok(dir) => dir,
-        Err(err) => {
-            return Err(Error::DatasetsDirError { err });
-        },
-    };
+    let packages_dir: PathBuf = get_packages_dir().map_err(|source| Error::PackagesDirError { source })?;
+    let datasets_dir: PathBuf = get_datasets_dir().map_err(|source| Error::DatasetsDirError { source })?;
 
     // Create the temporary results directory for this run
-    let temp_dir: TempDir = match tempdir() {
-        Ok(temp_dir) => temp_dir,
-        Err(err) => {
-            return Err(Error::ResultsDirCreateError { err });
-        },
-    };
+    let temp_dir: TempDir = tempdir().map_err(|source| Error::ResultsDirCreateError { source })?;
 
     // Prepare some states & options used across loops and return them
     let temp_dir_path: PathBuf = temp_dir.path().into();
@@ -579,15 +499,15 @@ pub async fn initialize_instance_vm(
     let package_addr: String = format!("{api_endpoint}/graphql");
     let pindex: Arc<Mutex<PackageIndex>> = match brane_tsk::api::get_package_index(&package_addr).await {
         Ok(pindex) => Arc::new(Mutex::new(pindex)),
-        Err(err) => {
-            return Err(Error::RemotePackageIndexError { address: package_addr, err });
+        Err(source) => {
+            return Err(Error::RemotePackageIndexError { address: package_addr, source });
         },
     };
     let data_addr: String = format!("{api_endpoint}/data/info");
     let dindex: Arc<Mutex<DataIndex>> = match brane_tsk::api::get_data_index(&data_addr).await {
         Ok(dindex) => Arc::new(Mutex::new(dindex)),
-        Err(err) => {
-            return Err(Error::RemoteDataIndexError { address: data_addr, err });
+        Err(source) => {
+            return Err(Error::RemoteDataIndexError { address: data_addr, source });
         },
     };
 
@@ -623,10 +543,10 @@ pub async fn run_dummy_vm(state: &mut DummyVmState, what: impl AsRef<str>, snipp
     state.vm = Some(res.0);
     let res: FullValue = match res.1 {
         Ok(res) => res,
-        Err(err) => {
-            error!("{}", err);
+        Err(source) => {
+            error!("{}", source);
             state.state.offset += 1 + snippet.chars().filter(|c| *c == '\n').count();
-            return Err(Error::ExecError { err: Box::new(err) });
+            return Err(Error::ExecError { source: Box::new(source) });
         },
     };
 
@@ -652,10 +572,10 @@ pub async fn run_offline_vm(state: &mut OfflineVmState, snippet: Snippet) -> Res
     state.vm = Some(res.0);
     let res: FullValue = match res.1 {
         Ok(res) => res,
-        Err(err) => {
-            error!("{}", err);
+        Err(source) => {
+            error!("{}", source);
             state.state.offset += snippet.lines;
-            return Err(Error::ExecError { err: Box::new(err) });
+            return Err(Error::ExecError { source: Box::new(source) });
         },
     };
 
@@ -748,34 +668,17 @@ pub fn process_offline_result(result: FullValue) -> Result<(), Error> {
             // If it's a dataset, attempt to download it
             FullValue::Data(name) => {
                 // Get the directory with the datasets
-                let datasets_dir = match ensure_datasets_dir(false) {
-                    Ok(dir) => dir,
-                    Err(err) => {
-                        return Err(Error::DatasetsDirError { err });
-                    },
-                };
+                let datasets_dir = ensure_datasets_dir(false).map_err(|source| Error::DatasetsDirError { source })?;
 
                 // Fetch a new, local DataIndex to get up-to-date entries
-                let index: DataIndex = match brane_tsk::local::get_data_index(datasets_dir) {
-                    Ok(index) => index,
-                    Err(err) => {
-                        return Err(Error::LocalDataIndexError { err });
-                    },
-                };
+                let index: DataIndex = brane_tsk::local::get_data_index(datasets_dir).map_err(|source| Error::LocalDataIndexError { source })?;
 
                 // Fetch the method of its availability
-                let info: &DataInfo = match index.get(&name) {
-                    Some(info) => info,
-                    None => {
-                        return Err(Error::UnknownDataset { name: name.into() });
-                    },
-                };
-                let access: &AccessKind = match info.access.get(LOCALHOST) {
-                    Some(access) => access,
-                    None => {
-                        return Err(Error::UnavailableDataset { name: name.into(), locs: info.access.keys().cloned().collect() });
-                    },
-                };
+                let info: &DataInfo = index.get(&name).ok_or_else(|| Error::UnknownDataset { name: name.clone().into() })?;
+                let access: &AccessKind = info
+                    .access
+                    .get(LOCALHOST)
+                    .ok_or_else(|| Error::UnavailableDataset { name: name.into(), locs: info.access.keys().cloned().collect() })?;
 
                 // Write the method of access
                 match access {
@@ -811,11 +714,11 @@ pub async fn process_instance_result(
     workflow: Workflow,
     result: FullValue,
 ) -> Result<(), Error> {
-    let instance_name = InstanceInfo::get_active_name().map_err(|err| Error::ActiveInstanceReadError { err })?;
+    let instance_name = InstanceInfo::get_active_name().map_err(|source| Error::ActiveInstanceReadError { source })?;
     let certs_dir =
-        InstanceInfo::get_instance_path(&instance_name).map_err(|err| Error::InstancePathError { name: instance_name, err })?.join("certs");
+        InstanceInfo::get_instance_path(&instance_name).map_err(|source| Error::InstancePathError { name: instance_name, source })?.join("certs");
 
-    let datasets_dir = ensure_datasets_dir(true).map_err(|err| Error::DatasetsDirError { err })?;
+    let datasets_dir = ensure_datasets_dir(true).map_err(|source| Error::DatasetsDirError { source })?;
 
     // Run the instance function
     process_instance(api_endpoint, proxy_addr, certs_dir, datasets_dir, use_case, workflow, result).await
@@ -856,15 +759,13 @@ pub async fn handle(
     // Either read the file or read stdin
     let (source, source_code): (Cow<str>, String) = if file == PathBuf::from("-") {
         let mut result: String = String::new();
-        if let Err(err) = std::io::stdin().read_to_string(&mut result) {
-            return Err(Error::StdinReadError { err });
-        };
+        std::io::stdin().read_to_string(&mut result).map_err(|source| Error::StdinReadError { source })?;
         ("<stdin>".into(), result)
     } else {
         match fs::read_to_string(&file) {
             Ok(res) => (file.to_string_lossy(), res),
-            Err(err) => {
-                return Err(Error::FileReadError { path: file, err });
+            Err(source) => {
+                return Err(Error::FileReadError { path: file, source });
             },
         }
     };
@@ -876,12 +777,7 @@ pub async fn handle(
     if !dummy {
         if remote {
             // Open the login file to find the remote location
-            let info: InstanceInfo = match InstanceInfo::from_active_path() {
-                Ok(config) => config,
-                Err(err) => {
-                    return Err(Error::InstanceInfoError { err });
-                },
-            };
+            let info: InstanceInfo = InstanceInfo::from_active_path().map_err(|source| Error::InstanceInfoError { source })?;
 
             // Run the thing
             remote_run(info, use_case, proxy_addr, options, source, source_code, profile).await

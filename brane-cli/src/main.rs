@@ -99,20 +99,14 @@ async fn run(options: Cli) -> Result<(), CliError> {
             use CertsSubcommand::*;
             match subcommand {
                 Add { paths, domain, instance, force } => {
-                    if let Err(err) = certs::add(instance, paths, domain, force) {
-                        return Err(CliError::CertsError { err });
-                    }
+                    certs::add(instance, paths, domain, force).map_err(|source| CliError::CertsError { source })?;
                 },
                 Remove { domains, instance, force } => {
-                    if let Err(err) = certs::remove(domains, instance, force) {
-                        return Err(CliError::CertsError { err });
-                    }
+                    certs::remove(domains, instance, force).map_err(|source| CliError::CertsError { source })?;
                 },
 
                 List { instance, all } => {
-                    if let Err(err) = certs::list(instance, all) {
-                        return Err(CliError::CertsError { err });
-                    }
+                    certs::list(instance, all).map_err(|source| CliError::CertsError { source })?;
                 },
             }
         },
@@ -121,46 +115,36 @@ async fn run(options: Cli) -> Result<(), CliError> {
             use DataSubcommand::*;
             match subcommand {
                 Build { file, workdir, keep_files, no_links } => {
-                    if let Err(err) = data::build(
+                    data::build(
                         &file,
                         workdir.unwrap_or_else(|| file.parent().map(|p| p.into()).unwrap_or_else(|| PathBuf::from("./"))),
                         keep_files,
                         no_links,
                     )
                     .await
-                    {
-                        return Err(CliError::DataError { err });
-                    }
+                    .map_err(|source| CliError::DataError { source })?;
                 },
                 Download { names, locs, use_case, user, proxy_addr, force } => {
                     let user = user.unwrap_or_else(|| {
                         std::env::var("USER").expect("Currently we require the user to be set. This should default to the logged in user")
                     });
 
-                    if let Err(err) = data::download(names, locs, use_case, user, &proxy_addr, force).await {
-                        return Err(CliError::DataError { err });
-                    }
+                    data::download(names, locs, use_case, user, &proxy_addr, force).await.map_err(|source| CliError::DataError { source })?;
                 },
 
                 List {} => {
-                    if let Err(err) = data::list() {
-                        return Err(CliError::DataError { err });
-                    }
+                    data::list().map_err(|source| CliError::DataError { source })?;
                 },
                 Search {} => {
                     eprintln!("search is not yet implemented.");
                     std::process::exit(1);
                 },
                 Path { names } => {
-                    if let Err(err) = data::path(names) {
-                        return Err(CliError::DataError { err });
-                    }
+                    data::path(names).map_err(|source| CliError::DataError { source })?;
                 },
 
                 Remove { names, force } => {
-                    if let Err(err) = data::remove(names, force) {
-                        return Err(CliError::DataError { err });
-                    }
+                    data::remove(names, force).map_err(|source| CliError::DataError { source })?;
                 },
             }
         },
@@ -169,7 +153,7 @@ async fn run(options: Cli) -> Result<(), CliError> {
             use InstanceSubcommand::*;
             match subcommand {
                 Add { hostname, api_port, drv_port, user, name, use_immediately, unchecked, force } => {
-                    if let Err(err) = instance::add(
+                    instance::add(
                         name.unwrap_or_else(|| hostname.hostname.clone()),
                         hostname,
                         api_port,
@@ -180,31 +164,21 @@ async fn run(options: Cli) -> Result<(), CliError> {
                         force,
                     )
                     .await
-                    {
-                        return Err(CliError::InstanceError { err });
-                    }
+                    .map_err(|source| CliError::InstanceError { source })?;
                 },
                 Remove { names, force } => {
-                    if let Err(err) = instance::remove(names, force) {
-                        return Err(CliError::InstanceError { err });
-                    }
+                    instance::remove(names, force).map_err(|source| CliError::InstanceError { source })?;
                 },
 
                 List { show_status } => {
-                    if let Err(err) = instance::list(show_status).await {
-                        return Err(CliError::InstanceError { err });
-                    }
+                    instance::list(show_status).await.map_err(|source| CliError::InstanceError { source })?;
                 },
                 Select { name } => {
-                    if let Err(err) = instance::select(name) {
-                        return Err(CliError::InstanceError { err });
-                    }
+                    instance::select(name).map_err(|source| CliError::InstanceError { source })?;
                 },
 
                 Edit { name, hostname, api_port, drv_port, user } => {
-                    if let Err(err) = instance::edit(name, hostname, api_port, drv_port, user) {
-                        return Err(CliError::InstanceError { err });
-                    }
+                    instance::edit(name, hostname, api_port, drv_port, user).map_err(|source| CliError::InstanceError { source })?;
                 },
             }
         },
@@ -217,85 +191,60 @@ async fn run(options: Cli) -> Result<(), CliError> {
                         Some(workdir) => workdir,
                         None => match std::fs::canonicalize(&file) {
                             Ok(file) => file.parent().unwrap().to_path_buf(),
-                            Err(err) => {
-                                return Err(CliError::PackageFileCanonicalizeError { path: file, err });
+                            Err(source) => {
+                                return Err(CliError::PackageFileCanonicalizeError { path: file, source });
                             },
                         },
                     };
-                    let workdir = match std::fs::canonicalize(workdir) {
-                        Ok(workdir) => workdir,
-                        Err(err) => {
-                            return Err(CliError::WorkdirCanonicalizeError { path: file, err });
-                        },
-                    };
+                    let workdir =
+                        std::fs::canonicalize(workdir).map_err(|source| CliError::WorkdirCanonicalizeError { path: file.clone(), source })?;
 
                     // Resolve the kind of the file
                     let kind = if let Some(kind) = kind {
-                        match PackageKind::from_str(&kind) {
-                            Ok(kind) => kind,
-                            Err(err) => {
-                                return Err(CliError::IllegalPackageKind { kind, err });
-                            },
-                        }
+                        PackageKind::from_str(&kind).map_err(|source| CliError::IllegalPackageKind { kind, source })?
                     } else {
-                        match brane_cli::utils::determine_kind(&file) {
-                            Ok(kind) => kind,
-                            Err(err) => {
-                                return Err(CliError::UtilError { err });
-                            },
-                        }
+                        brane_cli::utils::determine_kind(&file).map_err(|source| CliError::UtilError { source })?
                     };
 
                     // Build a new package with it
                     match kind {
                         PackageKind::Ecu => build_ecu::handle(arch.unwrap_or(Arch::HOST), workdir, file, init, keep_files, crlf_ok)
                             .await
-                            .map_err(|err| CliError::BuildError { err })?,
+                            .map_err(|source| CliError::BuildError { source })?,
                         _ => eprintln!("Unsupported package kind: {kind}"),
                     }
                 },
                 PackageSubcommand::Import { arch, repo, branch, workdir, file, kind, init, crlf_ok } => {
                     // Prepare the input URL and output directory
                     let url = format!("https://api.github.com/repos/{repo}/tarball/{branch}");
-                    let dir = match TempDir::new() {
-                        Ok(dir) => dir,
-                        Err(err) => {
-                            return Err(CliError::ImportError { err: ImportError::TempDirError { err } });
-                        },
-                    };
+                    let dir = TempDir::new().map_err(|source| CliError::ImportError { source: ImportError::TempDirError { source } })?;
 
                     // Download the file
                     let tar_path: PathBuf = dir.path().join("repo.tar.gz");
                     let dir_path: PathBuf = dir.path().join("repo");
-                    if let Err(err) =
-                        brane_shr::fs::download_file_async(&url, &tar_path, DownloadSecurity { checksum: None, https: true }, None).await
-                    {
-                        return Err(CliError::ImportError { err: ImportError::RepoCloneError { repo: url, target: dir_path, err } });
-                    }
-                    if let Err(err) = brane_shr::fs::unarchive_async(&tar_path, &dir_path).await {
-                        return Err(CliError::ImportError { err: ImportError::RepoCloneError { repo: url, target: dir_path, err } });
-                    }
-                    // Resolve that one weird folder in there
-                    let dir_path: PathBuf = match brane_shr::fs::recurse_in_only_child_async(&dir_path).await {
-                        Ok(path) => path,
-                        Err(err) => {
-                            return Err(CliError::ImportError { err: ImportError::RepoCloneError { repo: url, target: dir_path, err } });
+                    brane_shr::fs::download_file_async(&url, &tar_path, DownloadSecurity { checksum: None, https: true }, None).await.map_err(
+                        |source| CliError::ImportError {
+                            source: ImportError::RepoCloneError { repo: url.clone(), target: dir_path.clone(), source },
                         },
-                    };
+                    )?;
+                    brane_shr::fs::unarchive_async(&tar_path, &dir_path).await.map_err(|source| CliError::ImportError {
+                        source: ImportError::RepoCloneError { repo: url.clone(), target: dir_path.clone(), source },
+                    })?;
+
+                    // Resolve that one weird folder in there
+                    let dir_path: PathBuf = brane_shr::fs::recurse_in_only_child_async(&dir_path)
+                        .await
+                        .map_err(|source| CliError::ImportError { source: ImportError::RepoCloneError { repo: url, target: dir_path, source } })?;
 
                     // Try to get which file we need to use as package file
                     let file = match file {
                         Some(file) => dir_path.join(file),
-                        None => dir_path.join(brane_cli::utils::determine_file(&dir_path).map_err(|err| CliError::UtilError { err })?),
+                        None => dir_path.join(brane_cli::utils::determine_file(&dir_path).map_err(|source| CliError::UtilError { source })?),
                     };
-                    let file = match std::fs::canonicalize(&file) {
-                        Ok(file) => file,
-                        Err(err) => {
-                            return Err(CliError::PackageFileCanonicalizeError { path: file, err });
-                        },
-                    };
+                    let file =
+                        std::fs::canonicalize(&file).map_err(|source| CliError::PackageFileCanonicalizeError { path: file.clone(), source })?;
                     if !file.starts_with(&dir_path) {
-                        return Err(CliError::ImportError { err: ImportError::RepoEscapeError { path: file } });
+                        return Err(CliError::ImportError { source: ImportError::RepoEscapeError { path: file } });
                     }
 
                     // Try to resolve the working directory relative to the repository
@@ -303,55 +252,35 @@ async fn run(options: Cli) -> Result<(), CliError> {
                         Some(workdir) => dir.path().join(workdir),
                         None => file.parent().unwrap().to_path_buf(),
                     };
-                    let workdir = match std::fs::canonicalize(workdir) {
-                        Ok(workdir) => workdir,
-                        Err(err) => {
-                            return Err(CliError::WorkdirCanonicalizeError { path: file, err });
-                        },
-                    };
+                    let workdir =
+                        std::fs::canonicalize(workdir).map_err(|source| CliError::WorkdirCanonicalizeError { path: file.clone(), source })?;
                     if !workdir.starts_with(&dir_path) {
-                        return Err(CliError::ImportError { err: ImportError::RepoEscapeError { path: file } });
+                        return Err(CliError::ImportError { source: ImportError::RepoEscapeError { path: file } });
                     }
 
                     // Resolve the kind of the file
                     let kind = if let Some(kind) = kind {
-                        match PackageKind::from_str(&kind) {
-                            Ok(kind) => kind,
-                            Err(err) => {
-                                return Err(CliError::IllegalPackageKind { kind, err });
-                            },
-                        }
+                        PackageKind::from_str(&kind).map_err(|source| CliError::IllegalPackageKind { kind, source })?
                     } else {
-                        match brane_cli::utils::determine_kind(&file) {
-                            Ok(kind) => kind,
-                            Err(err) => {
-                                return Err(CliError::UtilError { err });
-                            },
-                        }
+                        brane_cli::utils::determine_kind(&file).map_err(|source| CliError::UtilError { source })?
                     };
 
                     // Build a new package with it
                     match kind {
                         PackageKind::Ecu => build_ecu::handle(arch.unwrap_or(Arch::HOST), workdir, file, init, false, crlf_ok)
                             .await
-                            .map_err(|err| CliError::BuildError { err })?,
+                            .map_err(|source| CliError::BuildError { source })?,
                         _ => eprintln!("Unsupported package kind: {kind}"),
                     }
                 },
                 PackageSubcommand::Inspect { name, version, syntax } => {
-                    if let Err(err) = packages::inspect(name, version, syntax) {
-                        return Err(CliError::OtherError { err });
-                    };
+                    packages::inspect(name, version, syntax).map_err(|source| CliError::OtherError { source })?;
                 },
                 PackageSubcommand::List { latest } => {
-                    if let Err(err) = packages::list(latest) {
-                        return Err(CliError::OtherError { err: anyhow::anyhow!(err) });
-                    };
+                    packages::list(latest).map_err(|source| CliError::OtherError { source: anyhow::anyhow!(source) })?;
                 },
                 PackageSubcommand::Load { name, version } => {
-                    if let Err(err) = packages::load(name, version).await {
-                        return Err(CliError::OtherError { err });
-                    };
+                    packages::load(name, version).await.map_err(|source| CliError::OtherError { source })?;
                 },
                 PackageSubcommand::Pull { packages } => {
                     // Parse the NAME:VERSION pairs into a name and a version
@@ -361,18 +290,14 @@ async fn run(options: Cli) -> Result<(), CliError> {
                     }
                     let mut parsed: Vec<(String, SemVersion)> = Vec::with_capacity(packages.len());
                     for package in &packages {
-                        parsed.push(match SemVersion::from_package_pair(package) {
-                            Ok(pair) => pair,
-                            Err(err) => {
-                                return Err(CliError::PackagePairParseError { raw: package.into(), err });
-                            },
-                        })
+                        parsed.push(
+                            SemVersion::from_package_pair(package)
+                                .map_err(|source| CliError::PackagePairParseError { raw: package.into(), source })?,
+                        );
                     }
 
                     // Now delegate the parsed pairs to the actual pull() function
-                    if let Err(err) = registry::pull(parsed).await {
-                        return Err(CliError::RegistryError { err });
-                    };
+                    registry::pull(parsed).await.map_err(|source| CliError::RegistryError { source })?;
                 },
                 PackageSubcommand::Push { packages } => {
                     // Parse the NAME:VERSION pairs into a name and a version
@@ -382,18 +307,13 @@ async fn run(options: Cli) -> Result<(), CliError> {
                     }
                     let mut parsed: Vec<(String, SemVersion)> = Vec::with_capacity(packages.len());
                     for package in packages {
-                        parsed.push(match SemVersion::from_package_pair(&package) {
-                            Ok(pair) => pair,
-                            Err(err) => {
-                                return Err(CliError::PackagePairParseError { raw: package, err });
-                            },
-                        })
+                        parsed.push(
+                            SemVersion::from_package_pair(&package).map_err(|source| CliError::PackagePairParseError { raw: package, source })?,
+                        );
                     }
 
                     // Now delegate the parsed pairs to the actual push() function
-                    if let Err(err) = registry::push(parsed).await {
-                        return Err(CliError::RegistryError { err });
-                    };
+                    registry::push(parsed).await.map_err(|source| CliError::RegistryError { source })?;
                 },
                 PackageSubcommand::Remove { force, packages, docker_socket, client_version } => {
                     // Parse the NAME:VERSION pairs into a name and a version
@@ -403,36 +323,26 @@ async fn run(options: Cli) -> Result<(), CliError> {
                     }
                     let mut parsed: Vec<(String, SemVersion)> = Vec::with_capacity(packages.len());
                     for package in packages {
-                        parsed.push(match SemVersion::from_package_pair(&package) {
-                            Ok(pair) => pair,
-                            Err(err) => {
-                                return Err(CliError::PackagePairParseError { raw: package, err });
-                            },
-                        })
+                        parsed.push(
+                            SemVersion::from_package_pair(&package).map_err(|source| CliError::PackagePairParseError { raw: package, source })?,
+                        );
                     }
 
                     // Now delegate the parsed pairs to the actual remove() function
-                    if let Err(err) = packages::remove(force, parsed, DockerOptions { socket: docker_socket, version: client_version }).await {
-                        return Err(CliError::PackageError { err });
-                    };
+                    packages::remove(force, parsed, DockerOptions { socket: docker_socket, version: client_version })
+                        .await
+                        .map_err(|source| CliError::PackageError { source })?;
                 },
                 PackageSubcommand::Test { name, version, show_result, docker_socket, client_version, keep_containers } => {
-                    if let Err(err) =
-                        test::handle(name, version, show_result, DockerOptions { socket: docker_socket, version: client_version }, keep_containers)
-                            .await
-                    {
-                        return Err(CliError::TestError { err });
-                    };
+                    test::handle(name, version, show_result, DockerOptions { socket: docker_socket, version: client_version }, keep_containers)
+                        .await
+                        .map_err(|source| CliError::TestError { source })?;
                 },
                 PackageSubcommand::Search { term } => {
-                    if let Err(err) = registry::search(term).await {
-                        return Err(CliError::OtherError { err });
-                    };
+                    registry::search(term).await.map_err(|source| CliError::OtherError { source })?;
                 },
                 PackageSubcommand::Unpublish { name, version, force } => {
-                    if let Err(err) = registry::unpublish(name, version, force).await {
-                        return Err(CliError::OtherError { err });
-                    };
+                    registry::unpublish(name, version, force).await.map_err(|source| CliError::OtherError { source })?;
                 },
             }
         },
@@ -442,9 +352,7 @@ async fn run(options: Cli) -> Result<(), CliError> {
             match subcommand {
                 Data { path, dry_run, overwrite, version } => {
                     // Upgrade the file
-                    if let Err(err) = upgrade::data(path, dry_run, overwrite, version) {
-                        return Err(CliError::UpgradeError { err });
-                    }
+                    upgrade::data(path, dry_run, overwrite, version).map_err(|source| CliError::UpgradeError { source })?;
                 },
             }
         },
@@ -454,9 +362,7 @@ async fn run(options: Cli) -> Result<(), CliError> {
             match subcommand {
                 Config { infra } => {
                     // Verify the configuration
-                    if let Err(err) = verify::config(infra) {
-                        return Err(CliError::VerifyError { err });
-                    }
+                    verify::config(infra).map_err(|source| CliError::VerifyError { source })?;
                     println!("OK");
                 },
             }
@@ -466,39 +372,29 @@ async fn run(options: Cli) -> Result<(), CliError> {
                 // If any of local or remote is given, do those
                 if arch {
                     if local {
-                        if let Err(err) = version::handle_local_arch() {
-                            return Err(CliError::VersionError { err });
-                        }
+                        version::handle_local_arch().map_err(|source| CliError::VersionError { source })?;
                     }
                     if remote {
-                        if let Err(err) = version::handle_remote_arch().await {
-                            return Err(CliError::VersionError { err });
-                        }
+                        version::handle_remote_arch().await.map_err(|source| CliError::VersionError { source })?;
                     }
                 } else {
                     if local {
-                        if let Err(err) = version::handle_local_version() {
-                            return Err(CliError::VersionError { err });
-                        }
+                        version::handle_local_version().map_err(|source| CliError::VersionError { source })?;
                     }
                     if remote {
-                        if let Err(err) = version::handle_remote_version().await {
-                            return Err(CliError::VersionError { err });
-                        }
+                        version::handle_remote_version().await.map_err(|source| CliError::VersionError { source })?;
                     }
                 }
             } else {
                 // Print neatly
-                if let Err(err) = version::handle().await {
-                    return Err(CliError::VersionError { err });
-                }
+                version::handle().await.map_err(|source| CliError::VersionError { source })?;
             }
         },
         Workflow { subcommand } => match subcommand {
             WorkflowSubcommand::Check { file, bakery, user, profile } => {
-                if let Err(err) = check::handle(file, if bakery { Language::Bakery } else { Language::BraneScript }, user, profile).await {
-                    return Err(CliError::CheckError { err });
-                };
+                check::handle(file, if bakery { Language::Bakery } else { Language::BraneScript }, user, profile)
+                    .await
+                    .map_err(|source| CliError::CheckError { source })?;
             },
             WorkflowSubcommand::Repl {
                 proxy_addr,
@@ -512,7 +408,7 @@ async fn run(options: Cli) -> Result<(), CliError> {
                 client_version,
                 keep_containers,
             } => {
-                if let Err(err) = repl::start(
+                repl::start(
                     proxy_addr,
                     remote,
                     use_case,
@@ -524,9 +420,7 @@ async fn run(options: Cli) -> Result<(), CliError> {
                     keep_containers,
                 )
                 .await
-                {
-                    return Err(CliError::ReplError { err });
-                };
+                .map_err(|source| CliError::ReplError { source })?;
             },
             WorkflowSubcommand::Run {
                 proxy_addr,
@@ -540,7 +434,7 @@ async fn run(options: Cli) -> Result<(), CliError> {
                 client_version,
                 keep_containers,
             } => {
-                if let Err(err) = run::handle(
+                run::handle(
                     proxy_addr,
                     if bakery { Language::Bakery } else { Language::BraneScript },
                     use_case,
@@ -552,9 +446,7 @@ async fn run(options: Cli) -> Result<(), CliError> {
                     keep_containers,
                 )
                 .await
-                {
-                    return Err(CliError::RunError { err });
-                };
+                .map_err(|source| CliError::RunError { source })?;
             },
         },
     }

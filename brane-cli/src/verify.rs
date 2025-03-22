@@ -32,6 +32,6 @@ pub fn config(infra: impl AsRef<Path>) -> Result<(), Error> {
     // Verify the infra file, which will validate the secrets file
     match InfraFile::from_path(infra.as_ref()) {
         Ok(_) => Ok(()),
-        Err(err) => Err(Error::ConfigFailed { err }),
+        Err(source) => Err(Error::ConfigFailed { source }),
     }
 }

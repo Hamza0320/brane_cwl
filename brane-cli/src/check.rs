@@ -52,22 +52,12 @@ async fn compile(instance: &InstanceInfo, input: &str, source: String, language:
     // Read the package index from the remote first
     let url: String = format!("{}/graphql", instance.api);
     debug!("Retrieving package index from '{url}'");
-    let pindex: PackageIndex = match brane_tsk::api::get_package_index(&url).await {
-        Ok(pindex) => pindex,
-        Err(err) => {
-            return Err(Error::PackageIndexRetrieve { url, err });
-        },
-    };
+    let pindex: PackageIndex = brane_tsk::api::get_package_index(&url).await.map_err(|source| Error::PackageIndexRetrieve { url, source })?;
 
     // Next up, the data index
     let url: String = format!("{}/data/info", instance.api);
     debug!("Retrieving data index from '{url}'");
-    let dindex: DataIndex = match brane_tsk::api::get_data_index(&url).await {
-        Ok(dindex) => dindex,
-        Err(err) => {
-            return Err(Error::DataIndexRetrieve { url, err });
-        },
-    };
+    let dindex: DataIndex = brane_tsk::api::get_data_index(&url).await.map_err(|source| Error::DataIndexRetrieve { url, source })?;
 
     // Hit the Brane compiler
     match brane_ast::compile_program(source.as_bytes(), &pindex, &dindex, &ParserOptions::new(language)) {
@@ -128,54 +118,44 @@ pub async fn handle(file: String, language: Language, user: Option<String>, prof
     let (input, source): (String, String) = if file == "-" {
         // Read from stdin
         let mut source: String = String::new();
-        if let Err(err) = io::stdin().read_to_string(&mut source) {
-            return Err(Error::InputStdinRead { err });
-        }
+        io::stdin().read_to_string(&mut source).map_err(|source| Error::InputStdinRead { source })?;
         ("<stdin>".into(), source)
     } else {
         // Read from a file
         match fs::read_to_string(&file) {
             Ok(source) => (file, source),
-            Err(err) => return Err(Error::InputFileRead { path: file.into(), err }),
+            Err(err) => return Err(Error::InputFileRead { path: file.into(), source: err }),
         }
     };
     load.stop();
 
     // Get the current instance
     debug!("Retrieving active instance info...");
-    let instance: InstanceInfo = match prof.time_func("Instance resolution", InstanceInfo::from_active_path) {
-        Ok(config) => config,
-        Err(err) => {
-            return Err(Error::ActiveInstanceInfoLoad { err });
-        },
-    };
+    let instance: InstanceInfo =
+        prof.time_func("Instance resolution", InstanceInfo::from_active_path).map_err(|source| Error::ActiveInstanceInfoLoad { source })?;
 
     // Attempt to compile the input
     debug!("Compiling source text to Brane WIR...");
-    let workflow: Workflow = match prof.time_fut("Workflow compilation", compile(&instance, &input, source, language, user)).await {
-        Ok(wf) => wf,
-        Err(err) => return Err(Error::WorkflowCompile { input, err: Box::new(err) }),
-    };
-    let sworkflow: String = match prof.time_func("Workflow serialization", || serde_json::to_string(&workflow)) {
-        Ok(swf) => swf,
-        Err(err) => return Err(Error::WorkflowSerialize { input, err }),
-    };
+    let workflow: Workflow = prof
+        .time_fut("Workflow compilation", compile(&instance, &input, source, language, user))
+        .await
+        .map_err(|source| Error::WorkflowCompile { input: input.clone(), source: Box::new(source) })?;
+
+    let sworkflow: String =
+        prof.time_func("Workflow serialization", || serde_json::to_string(&workflow)).map_err(|source| Error::WorkflowSerialize { input, source })?;
 
     // Connect to the driver
     debug!("Connecting to driver '{}'...", instance.drv);
     let rem = prof.time("Driver time");
-    let mut client: DriverServiceClient = match DriverServiceClient::connect(instance.drv.to_string()).await {
-        Ok(client) => client,
-        Err(err) => {
-            return Err(Error::DriverConnect { address: instance.drv, err });
-        },
-    };
+    let mut client: DriverServiceClient = DriverServiceClient::connect(instance.drv.to_string())
+        .await
+        .map_err(|source| Error::DriverConnect { address: instance.drv.clone(), source })?;
 
     // Send the request
     debug!("Sending check request to driver '{}' and awaiting response...", instance.drv);
     let res: CheckReply = match client.check(CheckRequest { workflow: sworkflow }).await {
         Ok(res) => res.into_inner(),
-        Err(err) => return Err(Error::DriverCheck { address: instance.drv, err }),
+        Err(source) => return Err(Error::DriverCheck { address: instance.drv, source }),
     };
     rem.stop();
 

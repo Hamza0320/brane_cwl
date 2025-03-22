@@ -41,35 +41,16 @@ pub async fn handle(
     debug!("Using {} as build context", context.display());
 
     // Read the package into a ContainerInfo.
-    let handle = match File::open(&file) {
-        Ok(handle) => handle,
-        Err(err) => {
-            return Err(BuildError::ContainerInfoOpenError { file, err });
-        },
-    };
-    let document = match ContainerInfo::from_reader(handle) {
-        Ok(document) => document,
-        Err(err) => {
-            return Err(BuildError::ContainerInfoParseError { file, err });
-        },
-    };
+    let handle = File::open(&file).map_err(|source| BuildError::ContainerInfoOpenError { file: file.clone(), source })?;
+    let document = ContainerInfo::from_reader(handle).map_err(|source| BuildError::ContainerInfoParseError { file: file.clone(), source })?;
 
     // Prepare package directory
-    let package_dir = match ensure_package_dir(&document.name, Some(&document.version), true) {
-        Ok(package_dir) => package_dir,
-        Err(err) => {
-            return Err(BuildError::PackageDirError { err });
-        },
-    };
+    let package_dir = ensure_package_dir(&document.name, Some(&document.version), true).map_err(|source| BuildError::PackageDirError { source })?;
 
     // Lock the directory, build, unlock the directory
     {
-        let _lock = match FileLock::lock(&document.name, document.version, package_dir.join(".lock")) {
-            Ok(lock) => lock,
-            Err(err) => {
-                return Err(BuildError::LockCreateError { name: document.name, err });
-            },
-        };
+        let _lock = FileLock::lock(&document.name, document.version, package_dir.join(".lock"))
+            .map_err(|source| BuildError::LockCreateError { name: document.name.clone(), source })?;
         build(arch, document, context, &package_dir, branelet_path, keep_files, convert_crlf).await?;
     };
 
@@ -123,16 +104,14 @@ async fn build(
                 Ok(digest) => {
                     package_info.digest = Some(digest);
                 },
-                Err(err) => {
-                    return Err(BuildError::DigestError { err });
+                Err(source) => {
+                    return Err(BuildError::DigestError { source });
                 },
             }
 
             // Write it to package directory
             let package_path = package_dir.join("package.yml");
-            if let Err(err) = package_info.to_path(package_path) {
-                return Err(BuildError::PackageFileCreateError { err });
-            }
+            package_info.to_path(package_path).map_err(|source| BuildError::PackageFileCreateError { source })?;
 
             // // Check if previous build is still loaded in Docker
             // let image_name = format!("{}:{}", package_info.name, package_info.version);
@@ -161,9 +140,7 @@ async fn build(
 
             // Remove the build files if not told to keep them
             if !keep_files {
-                if let Err(err) = fs::remove_dir_all(package_dir) {
-                    return Err(BuildError::CleanupError { path: package_dir.to_path_buf(), err });
-                }
+                fs::remove_dir_all(package_dir).map_err(|source| BuildError::CleanupError { path: package_dir.to_path_buf(), source })?;
             }
         },
     }
@@ -305,57 +282,41 @@ fn prepare_directory(
     debug!("Writing Dockerfile to '{}'...", file_path.display());
     match File::create(&file_path) {
         Ok(ref mut handle) => {
-            if let Err(err) = write!(handle, "{dockerfile}") {
-                return Err(BuildError::DockerfileWriteError { path: file_path, err });
-            }
+            write!(handle, "{dockerfile}").map_err(|source| BuildError::DockerfileWriteError { path: file_path, source })?;
         },
-        Err(err) => {
-            return Err(BuildError::DockerfileCreateError { path: file_path, err });
+        Err(source) => {
+            return Err(BuildError::DockerfileCreateError { path: file_path, source });
         },
     };
 
     // Create the container directory
     let container_dir = package_dir.join("container");
     if !container_dir.exists() {
-        if let Err(err) = fs::create_dir(&container_dir) {
-            return Err(BuildError::ContainerDirCreateError { path: container_dir, err });
-        }
+        fs::create_dir(&container_dir).map_err(|source| BuildError::ContainerDirCreateError { path: container_dir.clone(), source })?;
     }
 
     // Copy custom branelet binary to package directory if needed
     if let Some(branelet_path) = branelet_path {
         // Try to resole the branelet's path
-        let source = match std::fs::canonicalize(&branelet_path) {
-            Ok(source) => source,
-            Err(err) => {
-                return Err(BuildError::BraneletCanonicalizeError { path: branelet_path, err });
-            },
-        };
+        let original =
+            std::fs::canonicalize(&branelet_path).map_err(|source| BuildError::BraneletCanonicalizeError { path: branelet_path, source })?;
         let target = container_dir.join("branelet");
-        debug!("Copying custom branelet '{}' to '{}'...", source.display(), target.display());
-        if let Err(err) = fs::copy(&source, &target) {
-            return Err(BuildError::BraneletCopyError { source, target, err });
-        }
+        debug!("Copying custom branelet '{}' to '{}'...", original.display(), target.display());
+        fs::copy(&original, &target).map_err(|source| BuildError::BraneletCopyError { original, target, source })?;
     }
 
     // Create a workdirectory and make sure it's empty
     let wd = container_dir.join("wd");
     if wd.exists() {
-        if let Err(err) = fs::remove_dir_all(&wd) {
-            return Err(BuildError::WdClearError { path: wd, err });
-        }
+        fs::remove_dir_all(&wd).map_err(|source| BuildError::WdClearError { path: wd.clone(), source })?;
     }
-    if let Err(err) = fs::create_dir(&wd) {
-        return Err(BuildError::WdCreateError { path: wd, err });
-    }
+    fs::create_dir(&wd).map_err(|source| BuildError::WdCreateError { path: wd.clone(), source })?;
 
     // Write the local_container.yml to the container directory
     let local_container_path = wd.join("local_container.yml");
     debug!("Writing local_container.yml '{}'...", local_container_path.display());
     let local_container_info = LocalContainerInfo::from(document);
-    if let Err(err) = local_container_info.to_path(&local_container_path) {
-        return Err(BuildError::LocalContainerInfoCreateError { err });
-    }
+    local_container_info.to_path(&local_container_path).map_err(|source| BuildError::LocalContainerInfoCreateError { source })?;
 
     // Copy any other files marked in the ecu document
     if let Some(mut files) = document.files.as_ref().map(|files| files.iter().map(PathBuf::from).collect::<Vec<PathBuf>>()) {
@@ -373,9 +334,7 @@ fn prepare_directory(
             });
             if !target_dir.exists() {
                 debug!("Creating folder '{}'...", target_dir.display());
-                if let Err(err) = fs::create_dir_all(target_dir) {
-                    return Err(BuildError::WdDirCreateError { path: target_dir.into(), err });
-                };
+                fs::create_dir_all(target_dir).map_err(|source| BuildError::WdDirCreateError { path: target_dir.into(), source })?;
             }
 
             // Canonicalize the target itself. We do some handwaving with the parent to ensure that the thing we are canonicalizing exists, after which we can add the filename again (which is sure not to escape anymore).
@@ -385,29 +344,20 @@ fn prepare_directory(
                 Ok(target_dir) => target_dir.join(target.file_name().unwrap_or_else(|| {
                     panic!("Target file '{}' for package info file does not have a file name; this should never happen!", target.display())
                 })),
-                Err(err) => {
-                    return Err(BuildError::WdSourceFileCanonicalizeError { path: target, err });
+                Err(source) => {
+                    return Err(BuildError::WdSourceFileCanonicalizeError { path: target, source });
                 },
             };
 
             // Resolve the source folder
-            let source = match fs::canonicalize(if file.is_relative() { context.join(file) } else { file }) {
-                Ok(source) => source,
-                Err(err) => {
-                    return Err(BuildError::WdTargetFileCanonicalizeError { path: target, err });
-                },
-            };
+            let original = fs::canonicalize(if file.is_relative() { context.join(file) } else { file })
+                .map_err(|source| BuildError::WdTargetFileCanonicalizeError { path: target.clone(), source })?;
 
             // Switch whether it's a directory or a file
-            if source.is_dir() {
+            if original.is_dir() {
                 // Recurse into the directory
-                debug!("Recursing into directory '{}'...", source.display());
-                let entries: ReadDir = match fs::read_dir(&source) {
-                    Ok(entries) => entries,
-                    Err(err) => {
-                        return Err(BuildError::WdDirReadError { path: source, err });
-                    },
-                };
+                debug!("Recursing into directory '{}'...", original.display());
+                let entries: ReadDir = fs::read_dir(&original).map_err(|source| BuildError::WdDirReadError { path: original.clone(), source })?;
 
                 // For speedz, reserve as much new files as we know
                 let size_hint: (usize, Option<usize>) = entries.size_hint();
@@ -416,12 +366,7 @@ fn prepare_directory(
                 // Iterate over the entries to add them
                 for entry in entries {
                     // Unpack the entry
-                    let entry: DirEntry = match entry {
-                        Ok(entry) => entry,
-                        Err(err) => {
-                            return Err(BuildError::WdDirEntryError { path: source, err });
-                        },
-                    };
+                    let entry: DirEntry = entry.map_err(|source| BuildError::WdDirEntryError { path: original.clone(), source })?;
 
                     // Add it to the list of todos
                     files.push(entry.path());
@@ -431,9 +376,9 @@ fn prepare_directory(
                 continue;
             } else {
                 // Copy only the file
-                debug!("Copying file '{}' to '{}'...", source.display(), target.display());
-                if let Err(err) = fs::copy(&source, &target) {
-                    return Err(BuildError::WdFileCopyError { source, target, err });
+                debug!("Copying file '{}' to '{}'...", original.display(), target.display());
+                if let Err(source) = fs::copy(&original, &target) {
+                    return Err(BuildError::WdFileCopyError { original, target, source });
                 }
 
                 // Analyse if we have to CRLF-to-LF this file
@@ -449,30 +394,21 @@ fn prepare_directory(
                     {
                         // Open the file
                         debug!("Analyzing if '{}' has Windows-style (CRLF) line endings...", target.display());
-                        let mut handle: File = match File::open(&target) {
-                            Ok(handle) => handle,
-                            Err(err) => {
-                                return Err(BuildError::WdFileOpenError { path: target, err });
-                            },
-                        };
+                        let mut handle: File = File::open(&target).map_err(|source| BuildError::WdFileOpenError { path: target.clone(), source })?;
 
                         // Read the first 512 bytes of a file - but we use a larger buffer to avoid reallocation later on
                         let mut buffer: [u8; 16384] = [0; 16384];
-                        let mut buffer_len: usize = match handle.read(&mut buffer[..512]) {
-                            Ok(len) => len,
-                            Err(err) => {
-                                return Err(BuildError::WdFileReadError { path: target, err });
-                            },
-                        };
+                        let mut buffer_len: usize =
+                            handle.read(&mut buffer[..512]).map_err(|source| BuildError::WdFileReadError { path: target.clone(), source })?;
 
                         // Check if it's valid UTF-8
                         let sbuffer: &str = match std::str::from_utf8(&buffer[..buffer_len]) {
                             Ok(sbuffer) => sbuffer,
-                            Err(err) => {
+                            Err(source) => {
                                 debug!(
                                     "First 512 bytes of file '{}' are not valid UTF-8: {} (assuming it does not need CRLF -> LF conversion)",
                                     target.display(),
-                                    err
+                                    source
                                 );
                                 continue;
                             },
@@ -506,7 +442,7 @@ fn prepare_directory(
                         if !convert_crlf {
                             println!(
                                 "It looks like file {} has Windows-style line endings (CRLF). Do you want to convert it to Unix-style (LF)?",
-                                style(source.display()).bold().cyan()
+                                style(original.display()).bold().cyan()
                             );
                             println!("(You want to if this is a text file, but not if it's a raw binary file)");
                             println!();
@@ -517,8 +453,8 @@ fn prepare_directory(
                                         continue;
                                     }
                                 },
-                                Err(err) => {
-                                    return Err(BuildError::WdConfirmationError { err });
+                                Err(source) => {
+                                    return Err(BuildError::WdConfirmationError { source });
                                 },
                             };
                             println!();
@@ -526,12 +462,8 @@ fn prepare_directory(
 
                         // Otherwise, we open a second file to write the converted version to
                         debug!("Writing LF version of file '{}' to '{}'...", target.display(), lf_path.display());
-                        let mut lf_handle: File = match File::create(&lf_path) {
-                            Ok(handle) => handle,
-                            Err(err) => {
-                                return Err(BuildError::WdFileCreateError { path: lf_path, err });
-                            },
-                        };
+                        let mut lf_handle: File =
+                            File::create(&lf_path).map_err(|source| BuildError::WdFileCreateError { path: lf_path.clone(), source })?;
 
                         // Write the conversion, buffered
                         let mut lf_buffer: [u8; 16384] = [0; 16384];
@@ -564,29 +496,24 @@ fn prepare_directory(
                             }
 
                             // Now write the new buffer to the thing
-                            if let Err(err) = lf_handle.write(&lf_buffer[..lf_buffer_len]) {
-                                return Err(BuildError::WdFileWriteError { path: lf_path, err });
-                            }
+                            lf_handle
+                                .write(&lf_buffer[..lf_buffer_len])
+                                .map_err(|source| BuildError::WdFileWriteError { path: lf_path.clone(), source })?;
                             lf_buffer_len = 0;
 
                             // Refresh the input buffer
-                            buffer_len = match handle.read(&mut buffer) {
-                                Ok(len) => len,
-                                Err(err) => {
-                                    return Err(BuildError::WdFileReadError { path: target, err });
-                                },
-                            };
+                            buffer_len = handle.read(&mut buffer).map_err(|source| BuildError::WdFileReadError { path: target.clone(), source })?;
                         }
                     }
 
                     // When we're done, shuffle the files around
                     debug!("Moving '{}' -> '{}'", lf_path.display(), target.display());
-                    if let Err(err) = fs::remove_file(&target) {
-                        return Err(BuildError::WdFileRemoveError { path: target, err });
-                    }
-                    if let Err(err) = fs::rename(&lf_path, &target) {
-                        return Err(BuildError::WdFileRenameError { source: lf_path, target, err });
-                    }
+                    fs::remove_file(&target).map_err(|source| BuildError::WdFileRemoveError { path: target.clone(), source })?;
+                    fs::rename(&lf_path, &target).map_err(|source| BuildError::WdFileRenameError {
+                        original: lf_path,
+                        target: target.clone(),
+                        source,
+                    })?;
                 }
             }
 
@@ -601,12 +528,7 @@ fn prepare_directory(
     command.arg("wd.tar.gz");
     command.arg("wd");
     command.current_dir(&container_dir);
-    let output = match command.output() {
-        Ok(output) => output,
-        Err(err) => {
-            return Err(BuildError::WdCompressionLaunchError { command: format!("{command:?}"), err });
-        },
-    };
+    let output = command.output().map_err(|source| BuildError::WdCompressionLaunchError { command: format!("{command:?}"), source })?;
     if !output.status.success() {
         return Err(BuildError::WdCompressionError {
             command: format!("{command:?}"),

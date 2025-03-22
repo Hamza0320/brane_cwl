@@ -385,16 +385,14 @@ impl OfflineVm {
             };
             match planner.plan(workflow).await {
                 Ok(plan) => Ok(plan),
-                Err(err) => Err(Error::PlanError { err }),
+                Err(source) => Err(Error::PlanError { source }),
             }
         };
         // Unwrap the result (necessary to avoid borrowing conflicts with the lock)
         let plan: Workflow = match plan {
             Ok(plan) => plan,
-            Err(err) => return (self, Err(err)),
+            Err(source) => return (self, Err(source)),
         };
-
-
 
         // Step 2: Execution
         // Now wrap ourselves in a lock so that we can run the internal vm
@@ -409,14 +407,12 @@ impl OfflineVm {
             },
         };
 
-
-
         // Step 3: Result
         // Match the result to potentially error
         let value: FullValue = match result {
             Ok(value) => value,
-            Err(err) => {
-                return (this, Err(Error::ExecError { err }));
+            Err(source) => {
+                return (this, Err(Error::ExecError { source }));
             },
         };
 
