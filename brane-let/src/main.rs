@@ -175,16 +175,8 @@ async fn run(
     match output {
         Ok(PackageResult::Finished { result }) => {
             // Convert the output to a string
-            let output: String = match serde_json::to_string(&result) {
-                Ok(output) => output,
-                Err(err) => {
-                    let err = LetError::ResultJSONError { value: format!("{result:?}"), err };
-                    // if let Some(ref mut callback) = callback {
-                    //     if let Err(err) = callback.decode_failed(format!("{}", err)).await { log::error!("Could not update driver on DecodeFailed: {}", err); }
-                    // }
-                    return Err(err);
-                },
-            };
+            let output: String =
+                serde_json::to_string(&result).map_err(|source| LetError::ResultJSONError { value: format!("{result:?}"), source })?;
 
             // If that went successfull, output the result in some way
             // if let Some(ref mut callback) = callback {
@@ -261,25 +253,12 @@ where
     T: DeserializeOwned,
 {
     // Decode the Base64
-    let input = match BASE64_STANDARD.decode(input) {
-        Ok(input) => input,
-        Err(err) => {
-            return Err(LetError::ArgumentsBase64Error { err });
-        },
-    };
+    let input = BASE64_STANDARD.decode(input).map_err(|source| LetError::ArgumentsBase64Error { source })?;
 
     // Decode the raw bytes to UTF-8
-    let input = match String::from_utf8(input[..].to_vec()) {
-        Ok(input) => input,
-        Err(err) => {
-            return Err(LetError::ArgumentsUTF8Error { err });
-        },
-    };
+    let input = String::from_utf8(input[..].to_vec()).map_err(|source| LetError::ArgumentsUTF8Error { source })?;
 
     // Decode the string to JSON
     // println!("Received input: {}", input);
-    match serde_json::from_str(&input) {
-        Ok(result) => Ok(result),
-        Err(err) => Err(LetError::ArgumentsJSONError { err }),
-    }
+    serde_json::from_str(&input).map_err(|source| LetError::ArgumentsJSONError { source })
 }

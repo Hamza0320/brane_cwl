@@ -160,12 +160,8 @@ fn initialize(function: &str, arguments: &Map<FullValue>, working_dir: &Path) ->
     debug!("Reading local_container.yml...");
     // Get the container info from the path
     let container_info_path = working_dir.join("local_container.yml");
-    let container_info = match LocalContainerInfo::from_path(container_info_path.clone()) {
-        Ok(container_info) => container_info,
-        Err(err) => {
-            return Err(LetError::LocalContainerInfoError { path: container_info_path, err });
-        },
-    };
+    let container_info = LocalContainerInfo::from_path(container_info_path.clone())
+        .map_err(|source| LetError::LocalContainerInfoError { path: container_info_path, source })?;
 
     // Resolve the function we're supposed to call
     let action = match container_info.actions.get(function) {
@@ -193,12 +189,7 @@ fn initialize(function: &str, arguments: &Map<FullValue>, working_dir: &Path) ->
     let mut command = Command::new(init_sh);
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
-    let result = match command.output() {
-        Ok(result) => result,
-        Err(err) => {
-            return Err(LetError::WorkdirInitLaunchError { command: format!("{command:?}"), err });
-        },
-    };
+    let result = command.output().map_err(|source| LetError::WorkdirInitLaunchError { command: format!("{command:?}"), source })?;
     if !result.status.success() {
         return Err(LetError::WorkdirInitError {
             command: format!("{command:?}"),
@@ -237,12 +228,7 @@ fn start(
     let entrypoint = &container_info.entrypoint.exec;
     let command = function.command.clone().unwrap_or_else(|| ActionCommand { args: Default::default(), capture: None });
     let entrypoint_path = working_dir.join(entrypoint);
-    let entrypoint_path = match entrypoint_path.canonicalize() {
-        Ok(entrypoint_path) => entrypoint_path,
-        Err(err) => {
-            return Err(LetError::EntrypointPathError { path: entrypoint_path, err });
-        },
-    };
+    let entrypoint_path = entrypoint_path.canonicalize().map_err(|source| LetError::EntrypointPathError { path: entrypoint_path, source })?;
 
     // Prepare the actual subprocess crate command to execute
     // No idea what is happening here precisely, so disabling it until I run into it missing >:)
@@ -266,12 +252,7 @@ fn start(
     exec_command.envs(envs);
     exec_command.stdout(Stdio::piped());
     exec_command.stderr(Stdio::piped());
-    let process = match exec_command.spawn() {
-        Ok(process) => process,
-        Err(err) => {
-            return Err(LetError::PackageLaunchError { command: format!("{exec_command:?}"), err });
-        },
-    };
+    let process = exec_command.spawn().map_err(|source| LetError::PackageLaunchError { command: format!("{exec_command:?}"), source })?;
 
     // Done, return the process!!
     Ok((command, process))
@@ -298,12 +279,10 @@ fn construct_envs(variables: &Map<FullValue>) -> Result<Map<String>, LetError> {
         }
 
         // Convert the argument's value to some sort of valid string
-        envs.insert(name.clone(), match serde_json::to_string(variable) {
-            Ok(value) => value,
-            Err(err) => {
-                return Err(LetError::SerializeError { argument: name, data_type: variable.data_type(), err });
-            },
-        });
+        envs.insert(
+            name.clone(),
+            serde_json::to_string(variable).map_err(|source| LetError::SerializeError { argument: name, data_type: variable.data_type(), source })?,
+        );
         // use FullValue::*;
         // match variable {
         //     Boolean(value) => { envs.insert(name, format!("{}", value)); },
@@ -434,41 +413,16 @@ async fn complete(
     };
 
     // Match the status result
-    let status = match status {
-        Ok(status) => status,
-        Err(err) => {
-            return Err(LetError::PackageRunError { err });
-        },
-    };
+    let status = status.map_err(|source| LetError::PackageRunError { source })?;
 
     // Try to get stdout and stderr readers
-    let mut stdout = match process.stdout {
-        Some(stdout) => stdout,
-        None => {
-            return Err(LetError::ClosedStdout);
-        },
-    };
-    let mut stderr = match process.stderr {
-        Some(stderr) => stderr,
-        None => {
-            return Err(LetError::ClosedStderr);
-        },
-    };
+    let mut stdout = process.stdout.ok_or_else(|| LetError::ClosedStdout)?;
+    let mut stderr = process.stderr.ok_or_else(|| LetError::ClosedStderr)?;
     // Consume the readers into the raw text
     let mut stdout_text: Vec<u8> = Vec::with_capacity(DEFAULT_STD_BUFFER_SIZE);
-    let _n_stdout = match stdout.read_to_end(&mut stdout_text).await {
-        Ok(n_stdout) => n_stdout,
-        Err(err) => {
-            return Err(LetError::StdoutReadError { err });
-        },
-    };
+    let _n_stdout = stdout.read_to_end(&mut stdout_text).await.map_err(|source| LetError::StdoutReadError { source })?;
     let mut stderr_text: Vec<u8> = Vec::with_capacity(DEFAULT_STD_BUFFER_SIZE);
-    let _n_stderr = match stderr.read_to_end(&mut stderr_text).await {
-        Ok(n_stderr) => n_stderr,
-        Err(err) => {
-            return Err(LetError::StderrReadError { err });
-        },
-    };
+    let _n_stderr = stderr.read_to_end(&mut stderr_text).await.map_err(|source| LetError::StderrReadError { source })?;
     // Convert the bytes to text
     let stdout = String::from_utf8_lossy(&stdout_text).to_string();
     let stderr = String::from_utf8_lossy(&stderr_text).to_string();
@@ -564,12 +518,7 @@ fn decode(result: PackageReturnState, mode: &Option<String>) -> Result<PackageRe
             // If there is nothing to parse, note a Void
             if !stdout.trim().is_empty() {
                 // Simply use serde, our old friend
-                let output: HashMap<String, FullValue> = match serde_yaml::from_str(&stdout) {
-                    Ok(value) => value,
-                    Err(err) => {
-                        return Err(LetError::DecodeError { stdout, err });
-                    },
-                };
+                let output: HashMap<String, FullValue> = serde_yaml::from_str(&stdout).map_err(|source| LetError::DecodeError { stdout, source })?;
 
                 // Get the only key
                 if output.len() > 1 {
