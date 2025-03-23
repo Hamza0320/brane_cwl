@@ -52,18 +52,12 @@ impl Store {
     /// This function may error if we could not open or read the given File, or parse it as Store-file YAML.
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self, Error> {
         // Open the file
-        let handle: File = match File::open(path.as_ref()) {
-            Ok(handle) => handle,
-            Err(err) => {
-                return Err(Error::FileOpenError { path: path.as_ref().into(), err });
-            },
-        };
+        let handle: File = File::open(path.as_ref()).map_err(|source| Error::FileOpenError { path: path.as_ref().into(), source })?;
 
         // Pass the rest to the reader constructor, but do inject additional path error if it fails
         match Self::from_reader(handle) {
-            Ok(res) => Ok(res),
-            Err(Error::ReaderParseError { err }) => Err(Error::FileParseError { path: path.as_ref().into(), err }),
-            Err(err) => Err(err),
+            Err(Error::ReaderParseError { source }) => Err(Error::FileParseError { path: path.as_ref().into(), source }),
+            x => x,
         }
     }
 
@@ -79,12 +73,7 @@ impl Store {
     /// This function may error if we could not open or read the given File, or parse it as Store-file YAML.
     pub fn from_reader(reader: impl Read) -> Result<Self, Error> {
         // Get what we actually read
-        let infos: Vec<AssetInfo> = match serde_yaml::from_reader(reader) {
-            Ok(res) => res,
-            Err(err) => {
-                return Err(Error::ReaderParseError { err });
-            },
-        };
+        let infos: Vec<AssetInfo> = serde_yaml::from_reader(reader).map_err(|source| Error::ReaderParseError { source })?;
 
         // Put that in a map
         let mut res: HashMap<String, AssetInfo> = HashMap::with_capacity(infos.len());
@@ -114,12 +103,8 @@ impl Store {
         // Attempt to read the directory of datasets
         let datasets: HashMap<String, AssetInfo> = {
             // Fetch the entries in this directory
-            let mut entries: tfs::ReadDir = match tfs::read_dir(&data_path).await {
-                Ok(entries) => entries,
-                Err(err) => {
-                    return Err(Error::DirReadError { path: data_path.into(), err });
-                },
-            };
+            let mut entries: tfs::ReadDir =
+                tfs::read_dir(&data_path).await.map_err(|source| Error::DirReadError { path: data_path.into(), source })?;
 
             // Iterate through all entries
             let mut datasets: HashMap<String, AssetInfo> = HashMap::new();
@@ -127,14 +112,9 @@ impl Store {
             #[allow(irrefutable_let_patterns)]
             while let entry = entries.next_entry().await {
                 // Unwrap it
-                let entry: tfs::DirEntry = match entry {
-                    Ok(Some(entry)) => entry,
-                    Ok(None) => {
-                        break;
-                    },
-                    Err(err) => {
-                        return Err(Error::DirReadEntryError { path: data_path.into(), i, err });
-                    },
+                let entry: tfs::DirEntry = match entry.map_err(|source| Error::DirReadEntryError { path: data_path.into(), i, source })? {
+                    Some(entry) => entry,
+                    None => break,
                 };
 
                 // Match on directory or not
@@ -153,12 +133,7 @@ impl Store {
 
                     // Load it
                     // FIXME: The store should not fail if a single dataset is not parsible
-                    let info: AssetInfo = match AssetInfo::from_path(&info_path) {
-                        Ok(info) => info,
-                        Err(err) => {
-                            return Err(Error::AssetInfoReadError { path: info_path, err });
-                        },
-                    };
+                    let info: AssetInfo = AssetInfo::from_path(&info_path).map_err(|source| Error::AssetInfoReadError { path: info_path, source })?;
 
                     // Insert it
                     debug!("Noting down local dataset '{}'", info.name);
@@ -176,12 +151,8 @@ impl Store {
         // Now do the same for the results
         let results: HashMap<String, PathBuf> = {
             // Fetch the entries in this directory
-            let mut entries: tfs::ReadDir = match tfs::read_dir(&results_path).await {
-                Ok(entries) => entries,
-                Err(err) => {
-                    return Err(Error::DirReadError { path: results_path.into(), err });
-                },
-            };
+            let mut entries: tfs::ReadDir =
+                tfs::read_dir(&results_path).await.map_err(|source| Error::DirReadError { path: results_path.into(), source })?;
 
             // Iterate through all entries
             let mut results: HashMap<String, PathBuf> = HashMap::new();
@@ -189,14 +160,9 @@ impl Store {
             #[allow(irrefutable_let_patterns)]
             while let entry = entries.next_entry().await {
                 // Unwrap it
-                let entry: tfs::DirEntry = match entry {
-                    Ok(Some(entry)) => entry,
-                    Ok(None) => {
-                        break;
-                    },
-                    Err(err) => {
-                        return Err(Error::DirReadEntryError { path: results_path.into(), i, err });
-                    },
+                let entry: tfs::DirEntry = match entry.map_err(|source| Error::DirReadEntryError { path: results_path.into(), i, source })? {
+                    Some(entry) => entry,
+                    None => break,
                 };
 
                 // Match on directory or not

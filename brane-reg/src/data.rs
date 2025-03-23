@@ -150,50 +150,37 @@ pub async fn assert_asset_permission(
         AccessDataRequest { use_case: use_case.into(), workflow: workflow.clone(), data_id: data_name.name().into(), task_id: call };
 
     // Next, generate a JWT to inject in the request
-    let jwt: String = match specifications::policy::generate_policy_token(
+    let jwt: String = specifications::policy::generate_policy_token(
         if let Some(user) = &*workflow.user { user.as_str() } else { "UNKNOWN" },
         &worker_cfg.name,
         Duration::from_secs(60),
         &worker_cfg.paths.policy_deliberation_secret,
-    ) {
-        Ok(token) => token,
-        Err(err) => return Err(AuthorizeError::TokenGenerate { secret: worker_cfg.paths.policy_deliberation_secret.clone(), err }),
-    };
+    )
+    .map_err(|source| AuthorizeError::TokenGenerate { secret: worker_cfg.paths.policy_deliberation_secret.clone(), err: source })?;
 
     // Prepare the request to send
-    let client: reqwest::Client = match reqwest::Client::builder().build() {
-        Ok(client) => client,
-        Err(err) => return Err(AuthorizeError::ClientBuild { err }),
-    };
+    let client: reqwest::Client = reqwest::Client::builder().build().map_err(|source| AuthorizeError::ClientBuild { err: source })?;
     let addr: String = format!("{}/{}", worker_cfg.services.chk.address, DELIBERATION_API_TRANSFER_DATA.1);
-    let req: reqwest::Request =
-        match client.request(DELIBERATION_API_TRANSFER_DATA.0, &addr).header(header::AUTHORIZATION, format!("Bearer {jwt}")).json(&body).build() {
-            Ok(req) => req,
-            Err(err) => return Err(AuthorizeError::ExecuteRequestBuild { addr, err }),
-        };
+    let req: reqwest::Request = client
+        .request(DELIBERATION_API_TRANSFER_DATA.0, &addr)
+        .header(header::AUTHORIZATION, format!("Bearer {jwt}"))
+        .json(&body)
+        .build()
+        .map_err(|source| AuthorizeError::ExecuteRequestBuild { addr: addr.clone(), err: source })?;
 
     // Send it
     debug!("Sending request to '{addr}'...");
-    let res: reqwest::Response = match client.execute(req).await {
-        Ok(res) => res,
-        Err(err) => {
-            return Err(AuthorizeError::ExecuteRequestSend { addr, err });
-        },
-    };
+    let res: reqwest::Response =
+        client.execute(req).await.map_err(|source| AuthorizeError::ExecuteRequestSend { addr: addr.clone(), err: source })?;
 
     // Match on the status code to find if it's OK
     debug!("Waiting for checker response...");
     if !res.status().is_success() {
         return Err(AuthorizeError::ExecuteRequestFailure { addr, code: res.status(), err: res.text().await.ok() });
     }
-    let res: String = match res.text().await {
-        Ok(res) => res,
-        Err(err) => return Err(AuthorizeError::ExecuteBodyDownload { addr, err }),
-    };
-    let res: Verdict = match serde_json::from_str(&res) {
-        Ok(res) => res,
-        Err(err) => return Err(AuthorizeError::ExecuteBodyDeserialize { addr, raw: res, err }),
-    };
+    let res: String = res.text().await.map_err(|source| AuthorizeError::ExecuteBodyDownload { addr: addr.clone(), err: source })?;
+    let res: Verdict =
+        serde_json::from_str(&res).map_err(|source| AuthorizeError::ExecuteBodyDeserialize { addr: addr.clone(), raw: res, err: source })?;
 
     // Now match the checker's response
     match res {
@@ -216,10 +203,6 @@ pub async fn assert_asset_permission(
         },
     }
 }
-
-
-
-
 
 /***** HELPER STRUCTURES *****/
 /// Manual copy of the [policy-reasoner](https://github.com/braneframework/policy-reasoner)'s `AccessDataRequest`-struct.
@@ -244,10 +227,6 @@ pub struct AccessDataRequest {
     pub task_id:  Option<ProgramCounter>,
 }
 
-
-
-
-
 /***** LIBRARY *****/
 /// Handles a GET on the main `/data` path, returning a JSON with the datasets known to this registry.
 ///
@@ -263,13 +242,11 @@ pub async fn list(context: Arc<Context>) -> Result<impl Reply, Rejection> {
     info!("Handling GET on `/data/info` (i.e., list all datasets)...");
 
     // Load the config file
-    let node_config: NodeConfig = match NodeConfig::from_path(&context.node_config_path) {
-        Ok(config) => config,
-        Err(err) => {
-            error!("{}", trace!(("Failed to load NodeConfig file"), err));
-            return Err(warp::reject::reject());
-        },
-    };
+    let node_config: NodeConfig = NodeConfig::from_path(&context.node_config_path).map_err(|source| {
+        error!("{}", trace!(("Failed to load NodeConfig file"), source));
+        warp::reject::reject()
+    })?;
+
     if !node_config.node.is_worker() {
         error!("Given NodeConfig file '{}' does not have properties for a worker node.", context.node_config_path.display());
         return Err(warp::reject::reject());
@@ -285,22 +262,14 @@ pub async fn list(context: Arc<Context>) -> Result<impl Reply, Rejection> {
         node_config.node.worker().paths.data.display(),
         node_config.node.worker().paths.results.display()
     );
-    let store: Store = match Store::from_dirs(&node_config.node.worker().paths.data, &node_config.node.worker().paths.results).await {
-        Ok(store) => store,
-        Err(err) => {
-            error!("{}", trace!(("Failed to load the store"), err));
-            return Err(warp::reject::reject());
-        },
-    };
+    let store: Store = Store::from_dirs(&node_config.node.worker().paths.data, &node_config.node.worker().paths.results).await.map_err(|source| {
+        error!("{}", trace!(("Failed to load the store"), source));
+        warp::reject::reject()
+    })?;
 
     // Simply parse to a string
     debug!("Writing list of datasets as response...");
-    let body: String = match serde_json::to_string(&store.datasets) {
-        Ok(body) => body,
-        Err(err) => {
-            return Err(warp::reject::custom(Error::StoreSerializeError { err }));
-        },
-    };
+    let body: String = serde_json::to_string(&store.datasets).map_err(|source| warp::reject::custom(Error::StoreSerializeError { source }))?;
     let body_len: usize = body.len();
 
     // Construct a response with the body and the content-length header
@@ -328,13 +297,10 @@ pub async fn get(name: String, context: Arc<Context>) -> Result<impl Reply, Reje
     info!("Handling GET on `/data/info/{}` (i.e., get dataset metdata)...", name);
 
     // Load the config file
-    let node_config: NodeConfig = match NodeConfig::from_path(&context.node_config_path) {
-        Ok(config) => config,
-        Err(err) => {
-            error!("{}", trace!(("Failed to load NodeConfig file"), err));
-            return Err(warp::reject::reject());
-        },
-    };
+    let node_config: NodeConfig = NodeConfig::from_path(&context.node_config_path).map_err(|source| {
+        error!("{}", trace!(("Failed to load NodeConfig file"), source));
+        warp::reject::reject()
+    })?;
     if !node_config.node.is_worker() {
         error!("Given NodeConfig file '{}' does not have properties for a worker node.", context.node_config_path.display());
         return Err(warp::reject::reject());
@@ -353,13 +319,10 @@ pub async fn get(name: String, context: Arc<Context>) -> Result<impl Reply, Reje
         node_config.node.worker().paths.data.display(),
         node_config.node.worker().paths.results.display()
     );
-    let store: Store = match Store::from_dirs(&node_config.node.worker().paths.data, &node_config.node.worker().paths.results).await {
-        Ok(store) => store,
-        Err(err) => {
-            error!("{}", trace!(("Failed to load the store"), err));
-            return Err(warp::reject::reject());
-        },
-    };
+    let store: Store = Store::from_dirs(&node_config.node.worker().paths.data, &node_config.node.worker().paths.results).await.map_err(|source| {
+        error!("{}", trace!(("Failed to load the store"), source));
+        warp::reject::reject()
+    })?;
 
     // Attempt to resolve the name in the given store
     let info: &AssetInfo = match store.get_data(&name) {
@@ -372,12 +335,7 @@ pub async fn get(name: String, context: Arc<Context>) -> Result<impl Reply, Reje
 
     // Serialize it (or at least, try so)
     debug!("Dataset found, returning results");
-    let body: String = match serde_json::to_string(info) {
-        Ok(body) => body,
-        Err(err) => {
-            return Err(warp::reject::custom(Error::AssetSerializeError { name, err }));
-        },
-    };
+    let body: String = serde_json::to_string(info).map_err(|source| warp::reject::custom(Error::AssetSerializeError { name, source }))?;
     let body_len: usize = body.len();
 
     // Construct a response with the body and the content-length header
@@ -423,13 +381,11 @@ pub async fn download_data(
     };
 
     // Load the config file
-    let node_config: NodeConfig = match NodeConfig::from_path(&context.node_config_path) {
-        Ok(config) => config,
-        Err(err) => {
-            error!("{}", trace!(("Failed to load NodeConfig file"), err));
-            return Err(warp::reject::reject());
-        },
-    };
+    let node_config: NodeConfig = NodeConfig::from_path(&context.node_config_path).map_err(|source| {
+        error!("{}", trace!(("Failed to load NodeConfig file"), source));
+        warp::reject::reject()
+    })?;
+
     let worker_config: WorkerConfig = if let NodeSpecificConfig::Worker(worker) = node_config.node {
         worker
     } else {
@@ -444,22 +400,16 @@ pub async fn download_data(
     // Load the store
     debug!("Loading data ('{}') and results ('{}')...", worker_config.paths.data.display(), worker_config.paths.results.display());
     let loading = report.time("Disk loading");
-    let store: Store = match Store::from_dirs(&worker_config.paths.data, &worker_config.paths.results).await {
-        Ok(store) => store,
-        Err(err) => {
-            error!("{}", trace!(("Failed to load the store"), err));
-            return Err(warp::reject::reject());
-        },
-    };
+    let store: Store = Store::from_dirs(&worker_config.paths.data, &worker_config.paths.results).await.map_err(|source| {
+        error!("{}", trace!(("Failed to load the store"), source));
+        warp::reject::reject()
+    })?;
 
     // Attempt to resolve the name in the given store
-    let info: &AssetInfo = match store.get_data(&name) {
-        Some(info) => info,
-        None => {
-            error!("Unknown dataset '{}'", name);
-            return Err(warp::reject::not_found());
-        },
-    };
+    let info: &AssetInfo = store.get_data(&name).ok_or_else(|| {
+        error!("Unknown dataset '{}'", name);
+        warp::reject::not_found()
+    })?;
     loading.stop();
 
     // Attempt to parse the certificate to get the client's name (which tracks because it's already authenticated)
@@ -473,8 +423,8 @@ pub async fn download_data(
     };
     let client_name: String = match extract_client_name(cert) {
         Ok(name) => name,
-        Err(err) => {
-            error!("{} (client unauthenticated)", err);
+        Err(source) => {
+            error!("{} (client unauthenticated)", source);
             return Ok(reply::with_status(Response::new(Body::empty()), StatusCode::FORBIDDEN));
         },
     };
@@ -517,22 +467,19 @@ pub async fn download_data(
 
             // First, get a temporary directory
             let arch = report.time("Archiving (file)");
-            let tmpdir: TempDir = match TempDir::new() {
-                Ok(tmpdir) => tmpdir,
-                Err(err) => {
-                    let err = Error::TempDirCreateError { err };
-                    error!("{}", err.trace());
-                    return Err(warp::reject::custom(err));
-                },
-            };
+            let tmpdir: TempDir = TempDir::new().map_err(|source| {
+                let err = Error::TempDirCreateError { source };
+                error!("{}", err.trace());
+                warp::reject::custom(err)
+            })?;
 
             // Next, create an archive in the temporary directory
             let tar_path: PathBuf = tmpdir.path().join("data.tar.gz");
-            if let Err(err) = archive_async(&path, &tar_path, true).await {
-                let err = Error::DataArchiveError { err };
+            archive_async(&path, &tar_path, true).await.map_err(|source| {
+                let err = Error::DataArchiveError { source };
                 error!("{}", err.trace());
-                return Err(warp::reject::custom(err));
-            }
+                warp::reject::custom(err)
+            })?;
             arch.stop();
 
             // Now we send the tarball as a file in the reply
@@ -547,14 +494,11 @@ pub async fn download_data(
                 let _tmpdir: TempDir = tmpdir;
 
                 // Open the archive file to read
-                let mut handle: tfs::File = match tfs::File::open(&tar_path).await {
-                    Ok(handle) => handle,
-                    Err(err) => {
-                        let err = Error::TarOpenError { path: tar_path, err };
-                        error!("{}", err.trace());
-                        return Err(warp::reject::custom(err));
-                    },
-                };
+                let mut handle: tfs::File = tfs::File::open(&tar_path).await.map_err(|source| {
+                    let err = Error::TarOpenError { path: tar_path.clone(), source };
+                    error!("{}", err.trace());
+                    warp::reject::custom(err)
+                })?;
 
                 // Read it chunk-by-chunk
                 // (The size of the buffer, like most of the code but edited for not that library cuz it crashes during compilation, has been pulled from https://docs.rs/stream-body/latest/stream_body/)
@@ -563,8 +507,8 @@ pub async fn download_data(
                     // Read the chunk
                     let bytes: usize = match handle.read(&mut buf).await {
                         Ok(bytes) => bytes,
-                        Err(err) => {
-                            error!("{}", Error::TarReadError { path: tar_path, err }.trace());
+                        Err(source) => {
+                            error!("{}", Error::TarReadError { path: tar_path, source }.trace());
                             break;
                         },
                     };
@@ -573,13 +517,13 @@ pub async fn download_data(
                     }
 
                     // Send that with the body
-                    if let Err(err) = body_sender.send_data(Bytes::copy_from_slice(&buf[..bytes])).await {
-                        error!("{}", Error::TarSendError { err }.trace());
+                    if let Err(source) = body_sender.send_data(Bytes::copy_from_slice(&buf[..bytes])).await {
+                        error!("{}", Error::TarSendError { source }.trace());
                     }
                 }
 
                 // Done
-                Ok(())
+                Ok::<_, Rejection>(())
             });
 
             // We use the handle as a stream.
@@ -621,13 +565,10 @@ pub async fn download_result(
     };
 
     // Load the config file
-    let node_config: NodeConfig = match NodeConfig::from_path(&context.node_config_path) {
-        Ok(config) => config,
-        Err(err) => {
-            error!("{}", trace!(("Failed to load NodeConfig file"), err));
-            return Err(warp::reject::reject());
-        },
-    };
+    let node_config: NodeConfig = NodeConfig::from_path(&context.node_config_path).map_err(|source| {
+        error!("{}", trace!(("Failed to load NodeConfig file"), source));
+        warp::reject::reject()
+    })?;
     let worker_config: WorkerConfig = if let NodeSpecificConfig::Worker(worker) = node_config.node {
         worker
     } else {
@@ -644,22 +585,16 @@ pub async fn download_result(
     // Load the store
     debug!("Loading data ('{}') and results ('{}')...", worker_config.paths.data.display(), worker_config.paths.results.display());
     let loading = report.time("Disk loading");
-    let store: Store = match Store::from_dirs(&worker_config.paths.data, &worker_config.paths.results).await {
-        Ok(store) => store,
-        Err(err) => {
-            error!("{}", trace!(("Failed to load the store"), err));
-            return Err(warp::reject::reject());
-        },
-    };
+    let store: Store = Store::from_dirs(&worker_config.paths.data, &worker_config.paths.results).await.map_err(|source| {
+        error!("{}", trace!(("Failed to load the store"), source));
+        warp::reject::reject()
+    })?;
 
     // Attempt to resolve the name in the given store
-    let path: &Path = match store.get_result(&name) {
-        Some(path) => path,
-        None => {
-            error!("Unknown intermediate result '{}'", name);
-            return Err(warp::reject::not_found());
-        },
-    };
+    let path: &Path = store.get_result(&name).ok_or_else(|| {
+        error!("Unknown intermediate result '{}'", name);
+        warp::reject::not_found()
+    })?;
     loading.stop();
 
     // Attempt to parse the certificate to get the client's name (which tracks because it's already authenticated)
@@ -689,43 +624,38 @@ pub async fn download_result(
         body.task.map(|t| ProgramCounter::new(if let Some(id) = t.0 { FunctionId::Func(id as usize) } else { FunctionId::Main }, t.1 as usize)),
     )
     .await
-    {
-        Ok(None) => {
+    .map_err(|source| {
+        error!("{}", trace!(("Failed to consult the checker"), source));
+        warp::reject::reject()
+    })? {
+        None => {
             info!("Checker authorized download of intermediate result '{}' by '{}'", name, client_name);
         },
-
-        Ok(Some(reasons)) => {
+        Some(reasons) => {
             info!("Checker denied download of intermediate result '{}' by '{}'", name, client_name);
             if !reasons.is_empty() {
                 debug!("Reasons:\n{}\n", reasons.into_iter().map(|r| format!(" - {r}")).collect::<Vec<String>>().join("\n"));
             }
             return Ok(reply::with_status(Response::new(Body::empty()), StatusCode::FORBIDDEN));
         },
-        Err(err) => {
-            error!("{}", trace!(("Failed to consult the checker"), err));
-            return Err(warp::reject::reject());
-        },
     }
     auth.stop();
 
     // Start the upload; first, get a temporary directory
     let arch = report.time("Archiving (file)");
-    let tmpdir: TempDir = match TempDir::new() {
-        Ok(tmpdir) => tmpdir,
-        Err(err) => {
-            let err = Error::TempDirCreateError { err };
-            error!("{}", err.trace());
-            return Err(warp::reject::custom(err));
-        },
-    };
+    let tmpdir: TempDir = TempDir::new().map_err(|source| {
+        let err = Error::TempDirCreateError { source };
+        error!("{}", err.trace());
+        warp::reject::custom(err)
+    })?;
 
     // Next, create an archive in the temporary directory
     let tar_path: PathBuf = tmpdir.path().join("data.tar.gz");
-    if let Err(err) = archive_async(&path, &tar_path, true).await {
-        let err = Error::DataArchiveError { err };
+    archive_async(&path, &tar_path, true).await.map_err(|source| {
+        let err = Error::DataArchiveError { source };
         error!("{}", err.trace());
-        return Err(warp::reject::custom(err));
-    }
+        warp::reject::custom(err)
+    })?;
     arch.stop();
 
     // Now we send the tarball as a file in the reply
@@ -740,14 +670,11 @@ pub async fn download_result(
         let _tmpdir: TempDir = tmpdir;
 
         // Open the archive file to read
-        let mut handle: tfs::File = match tfs::File::open(&tar_path).await {
-            Ok(handle) => handle,
-            Err(err) => {
-                let err = Error::TarOpenError { path: tar_path, err };
-                error!("{}", err.trace());
-                return Err(warp::reject::custom(err));
-            },
-        };
+        let mut handle: tfs::File = tfs::File::open(&tar_path).await.map_err(|source| {
+            let err = Error::TarOpenError { path: tar_path.clone(), source };
+            error!("{}", err.trace());
+            warp::reject::custom(err)
+        })?;
 
         // Read it chunk-by-chunk
         // (The size of the buffer, like most of the code but edited for not that library cuz it crashes during compilation, has been pulled from https://docs.rs/stream-body/latest/stream_body/)
@@ -756,8 +683,8 @@ pub async fn download_result(
             // Read the chunk
             let bytes: usize = match handle.read(&mut buf).await {
                 Ok(bytes) => bytes,
-                Err(err) => {
-                    error!("{}", Error::TarReadError { path: tar_path, err }.trace());
+                Err(source) => {
+                    error!("{}", Error::TarReadError { path: tar_path.clone(), source }.trace());
                     break;
                 },
             };
@@ -766,13 +693,13 @@ pub async fn download_result(
             }
 
             // Send that with the body
-            if let Err(err) = body_sender.send_data(Bytes::copy_from_slice(&buf[..bytes])).await {
-                error!("{}", Error::TarSendError { err }.trace());
+            if let Err(source) = body_sender.send_data(Bytes::copy_from_slice(&buf[..bytes])).await {
+                error!("{}", Error::TarSendError { source }.trace());
             }
         }
 
         // Done
-        Ok(())
+        Ok::<_, Rejection>(())
     });
 
     // We use the handle as a stream.
