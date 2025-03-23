@@ -90,9 +90,7 @@ fn ensure_dir_of(path: impl AsRef<Path>, fix_dirs: bool) -> Result<(), Error> {
         };
 
         // Create it if we're asked to
-        if let Err(err) = fs::create_dir_all(dir) {
-            return Err(Error::DirCreateError { path: dir.into(), err });
-        }
+        fs::create_dir_all(dir).map_err(|source| Error::DirCreateError { path: dir.into(), source })?;
     }
     // If it does but is a file, error
     if !dir.is_dir() {
@@ -122,10 +120,9 @@ fn ensure_dir(path: impl AsRef<Path>, fix_dirs: bool) -> Result<(), Error> {
         };
 
         // Create it if we're asked to
-        if let Err(err) = fs::create_dir_all(path) {
-            return Err(Error::DirCreateError { path: path.into(), err });
-        }
+        fs::create_dir_all(path).map_err(|source| Error::DirCreateError { path: path.into(), source })?;
     }
+
     // If it does but is a file, error
     if !path.is_dir() {
         return Err(Error::DirNotADir { path: path.into() });
@@ -148,10 +145,7 @@ fn ensure_dir(path: impl AsRef<Path>, fix_dirs: bool) -> Result<(), Error> {
 #[inline]
 fn canonicalize(path: impl AsRef<Path>) -> Result<PathBuf, Error> {
     let path: &Path = path.as_ref();
-    match path.canonicalize() {
-        Ok(path) => Ok(path),
-        Err(err) => Err(Error::CanonicalizeError { path: path.into(), err }),
-    }
+    path.canonicalize().map_err(|source| Error::CanonicalizeError { path: path.into(), source })
 }
 
 /// Function that takes a location ID and tries to make it a bit better.
@@ -325,12 +319,7 @@ fn generate_config(what: impl Display, config: impl Serialize, path: impl AsRef<
     info!("Generating {}...", what);
 
     // Serialize the config with JSON
-    let sconfig: String = match serde_json::to_string_pretty(&config) {
-        Ok(sconfig) => sconfig,
-        Err(err) => {
-            return Err(Error::ConfigSerializeError { err });
-        },
-    };
+    let sconfig: String = serde_json::to_string_pretty(&config).map_err(|source| Error::ConfigSerializeError { source })?;
 
     // Assert the download directory exists
     let dir: Option<&Path> = path.parent();
@@ -342,17 +331,11 @@ fn generate_config(what: impl Display, config: impl Serialize, path: impl AsRef<
 
     // Open the local file
     debug!("Opening output file '{}'...", path.display());
-    let mut handle: File = match File::create(path) {
-        Ok(handle) => handle,
-        Err(err) => {
-            return Err(Error::FileCreateError { what: "config", path: path.into(), err });
-        },
-    };
+    let mut handle: File = File::create(path).map_err(|source| Error::FileCreateError { what: "config", path: path.into(), source })?;
 
     // Write it and we're done
-    if let Err(err) = write!(handle, "{sconfig}") {
-        return Err(Error::FileWriteError { what: "config", path: path.into(), err });
-    }
+    write!(handle, "{sconfig}").map_err(|source| Error::FileWriteError { what: "config", path: path.into(), source })?;
+
     Ok(())
 }
 
@@ -368,14 +351,14 @@ fn extract_cfssl(path: impl AsRef<Path>, cfssljson: bool) -> Result<(), Error> {
     let path: &Path = path.as_ref();
 
     // Attempt to write it
-    if let Err(err) = fs::write(path, if !cfssljson { CFSSL_BIN } else { CFSSLJSON_BIN }) {
-        return Err(Error::ExtractError { what: if !cfssljson { "cfssl" } else { "cfssljson" }, path: path.into(), err });
-    }
+    fs::write(path, if !cfssljson { CFSSL_BIN } else { CFSSLJSON_BIN }).map_err(|source| Error::ExtractError {
+        what: if !cfssljson { "cfssl" } else { "cfssljson" },
+        path: path.into(),
+        source,
+    })?;
 
     // Make the file executable
-    if let Err(err) = set_executable(path) {
-        return Err(Error::ExecutableError { err: Box::new(err) });
-    }
+    set_executable(path).map_err(|source| Error::ExecutableError { source: Box::new(source) })?;
 
     // Done
     Ok(())
@@ -413,12 +396,13 @@ fn generate_ca_cert(cfssl: impl AsRef<Path>, cfssljson: impl AsRef<Path>, ca_csr
     debug!("CA certificate generation command: {:?}", cmd);
     let output: Output = match cmd.output() {
         Ok(output) => output,
-        Err(err) => {
-            return Err(Error::SpawnError { cmd, err });
+        Err(source) => {
+            return Err(Error::SpawnError { cmd, source });
         },
     };
+
     if !output.status.success() {
-        return Err(Error::SpawnFailure { cmd, status: output.status, err: String::from_utf8_lossy(&output.stderr).into() });
+        return Err(Error::SpawnFailure { cmd, status: output.status, stderr: String::from_utf8_lossy(&output.stderr).into() });
     }
 
     // Done
@@ -482,12 +466,13 @@ fn generate_client_server_cert(
     debug!("{} certificate generation command: {:?}", profile, cmd);
     let output: Output = match cmd.output() {
         Ok(output) => output,
-        Err(err) => {
-            return Err(Error::SpawnError { cmd, err });
+        Err(source) => {
+            return Err(Error::SpawnError { cmd, source });
         },
     };
+
     if !output.status.success() {
-        return Err(Error::SpawnFailure { cmd, status: output.status, err: String::from_utf8_lossy(&output.stderr).into() });
+        return Err(Error::SpawnFailure { cmd, status: output.status, stderr: String::from_utf8_lossy(&output.stderr).into() });
     }
 
     // Done
@@ -894,21 +879,12 @@ pub fn node(
 
     // Open the file and write a header to it
     debug!("Writing to '{}'...", path.display());
-    let mut handle: File = match File::create(&path) {
-        Ok(handle) => handle,
-        Err(err) => {
-            return Err(Error::FileCreateError { what: "node.yml", path, err });
-        },
-    };
+    let mut handle: File = File::create(&path).map_err(|source| Error::FileCreateError { what: "node.yml", path: path.clone(), source })?;
 
     // Write the top comment header thingy
-    if let Err(err) = write_node_header(&mut handle) {
-        return Err(Error::FileHeaderWriteError { what: "infra.yml", path, err });
-    }
+    write_node_header(&mut handle).map_err(|source| Error::FileHeaderWriteError { what: "infra.yml", path: path.clone(), source })?;
     // Write the file itself
-    if let Err(err) = node_config.to_writer(handle, true) {
-        return Err(Error::FileBodyWriteError { what: "infra.yml", path, err });
-    }
+    node_config.to_writer(handle, true).map_err(|source| Error::FileBodyWriteError { what: "infra.yml", path: path.clone(), source })?;
 
     // Done
     println!("Successfully generated {}", style(path.display().to_string()).bold().green());
@@ -945,10 +921,9 @@ pub async fn certs(fix_dirs: bool, path: impl Into<PathBuf>, temp_dir: impl Into
         if !fix_dirs {
             return Err(Error::DirNotFound { path });
         }
+
         debug!("Creating missing '{}' directory (fix_dirs == true)...", path.display());
-        if let Err(err) = fs::create_dir_all(&path) {
-            return Err(Error::DirCreateError { path, err });
-        }
+        fs::create_dir_all(&path).map_err(|source| Error::DirCreateError { path: path.clone(), source })?;
     } else if !path.is_dir() {
         return Err(Error::DirNotADir { path });
     }
@@ -1083,9 +1058,8 @@ pub async fn certs(fix_dirs: bool, path: impl Into<PathBuf>, temp_dir: impl Into
 
             // Generate the key file(s) in a temporary directory
             let certs_dir: PathBuf = temp_dir.join(format!("certs-{id}"));
-            if let Err(err) = fs::create_dir_all(&certs_dir) {
-                return Err(Error::DirCreateError { path: certs_dir, err });
-            }
+            fs::create_dir_all(&certs_dir).map_err(|source| Error::DirCreateError { path: certs_dir.clone(), source })?;
+
             generate_client_server_cert(
                 "client",
                 CfsslExecutables { cfssl: &cfssl_path, cfssljson: &cfssljson_path },
@@ -1099,43 +1073,27 @@ pub async fn certs(fix_dirs: bool, path: impl Into<PathBuf>, temp_dir: impl Into
             // Create the output ID file
             let id_path: PathBuf = path.join("client-id.pem");
             debug!("Merging certificate and key into '{}'...", id_path.display());
-            let mut output: File = match File::create(&id_path) {
-                Ok(output) => output,
-                Err(err) => {
-                    return Err(Error::FileCreateError { what: "client identity", path: id_path, err });
-                },
-            };
+            let mut output: File =
+                File::create(&id_path).map_err(|source| Error::FileCreateError { what: "client identity", path: id_path.clone(), source })?;
 
             // Write the key file into it...
             let key_path: PathBuf = certs_dir.join("client-key.pem");
-            let mut key: File = match File::open(&key_path) {
-                Ok(key) => key,
-                Err(err) => {
-                    return Err(Error::FileOpenError { what: "client private key", path: key_path, err });
-                },
-            };
-            if let Err(err) = std::io::copy(&mut key, &mut output) {
-                return Err(Error::CopyError { source: key_path, target: id_path, err });
-            }
+            let mut key: File =
+                File::open(&key_path).map_err(|source| Error::FileOpenError { what: "client private key", path: key_path.clone(), source })?;
+
+            std::io::copy(&mut key, &mut output).map_err(|source| Error::CopyError { original: key_path, target: id_path.clone(), source })?;
 
             // And then the certificate file
             let cert_path: PathBuf = certs_dir.join("client.pem");
-            let mut cert: File = match File::open(&cert_path) {
-                Ok(key) => key,
-                Err(err) => {
-                    return Err(Error::FileOpenError { what: "client certificate", path: cert_path, err });
-                },
-            };
-            if let Err(err) = std::io::copy(&mut cert, &mut output) {
-                return Err(Error::CopyError { source: cert_path, target: id_path, err });
-            }
+            let mut cert: File =
+                File::open(&cert_path).map_err(|source| Error::FileOpenError { what: "client certificate", path: cert_path.clone(), source })?;
+
+            std::io::copy(&mut cert, &mut output).map_err(|source| Error::CopyError { original: cert_path.clone(), target: id_path, source })?;
 
             // Finally, write the CA file as well.
             let out_ca_path: PathBuf = path.join("ca.pem");
             debug!("Copying server CA certificate to '{}'...", out_ca_path.display());
-            if let Err(err) = std::fs::copy(ca_cert, &out_ca_path) {
-                return Err(Error::CopyError { source: ca_cert.clone(), target: out_ca_path, err });
-            }
+            std::fs::copy(ca_cert, &out_ca_path).map_err(|source| Error::CopyError { original: ca_cert.clone(), target: out_ca_path, source })?;
         },
     }
 
@@ -1221,21 +1179,12 @@ pub fn infra(
     ensure_dir_of(&path, fix_dirs)?;
 
     // Open the file to write it to
-    let mut handle: File = match File::create(&path) {
-        Ok(handle) => handle,
-        Err(err) => {
-            return Err(Error::FileCreateError { what: "infra.yml", path, err });
-        },
-    };
+    let mut handle: File = File::create(&path).map_err(|source| Error::FileCreateError { what: "infra.yml", path: path.clone(), source })?;
 
     // Write the header
-    if let Err(err) = write_infra_header(&mut handle) {
-        return Err(Error::FileHeaderWriteError { what: "infra.yml", path, err });
-    }
+    write_infra_header(&mut handle).map_err(|source| Error::FileHeaderWriteError { what: "infra.yml", path: path.clone(), source })?;
     // Write the contents
-    if let Err(err) = infra.to_writer(handle, true) {
-        return Err(Error::FileBodyWriteError { what: "infra.yml", path, err });
-    }
+    infra.to_writer(handle, true).map_err(|source| Error::FileBodyWriteError { what: "infra.yml", path: path.clone(), source })?;
 
     // Done
     println!("Successfully generated {}", style(path.display().to_string()).bold().green());
@@ -1286,21 +1235,13 @@ pub fn backend(
     ensure_dir_of(&path, fix_dirs)?;
 
     // Open the file to write it to
-    let mut handle: File = match File::create(&path) {
-        Ok(handle) => handle,
-        Err(err) => {
-            return Err(Error::FileCreateError { what: "backend.yml", path, err });
-        },
-    };
+    let mut handle: File = File::create(&path).map_err(|source| Error::FileCreateError { what: "backend.yml", path: path.clone(), source })?;
 
     // Write the header
-    if let Err(err) = write_backend_header(&mut handle) {
-        return Err(Error::FileHeaderWriteError { what: "backend.yml", path, err });
-    }
+    write_backend_header(&mut handle).map_err(|source| Error::FileHeaderWriteError { what: "backend.yml", path: path.clone(), source })?;
+
     // Write the contents
-    if let Err(err) = backend.to_writer(handle, true) {
-        return Err(Error::FileBodyWriteError { what: "backend.yml", path, err });
-    }
+    backend.to_writer(handle, true).map_err(|source| Error::FileBodyWriteError { what: "backend.yml", path: path.clone(), source })?;
 
     // Done
     println!("Successfully generated {}", style(path.display().to_string()).bold().green());
@@ -1324,9 +1265,7 @@ pub async fn policy_database(fix_dirs: bool, path: PathBuf, branch: String) -> R
     // First, touch the file alive
     debug!("Creating policy database file '{}'...", path.display());
     ensure_dir_of(&path, fix_dirs)?;
-    if let Err(err) = File::create(&path) {
-        return Err(Error::FileCreateError { what: "policy database", path, err });
-    }
+    File::create(&path).map_err(|source| Error::FileCreateError { what: "policy database", path: path.clone(), source })?;
 
     // Next, fetch the migrations to run
     debug!("Retrieving up-to-date mitigations from 'https://github.com/braneframework/policy-reasoner ({branch})...");
@@ -1334,35 +1273,29 @@ pub async fn policy_database(fix_dirs: bool, path: PathBuf, branch: String) -> R
     let (_dir, migrations): (TempDir, FileBasedMigrations) = {
         // Prepare the input URL and output directory
         let url = format!("https://api.github.com/repos/braneframework/policy-reasoner/tarball/{branch}");
-        let dir = match TempDir::new() {
-            Ok(dir) => dir,
-            Err(err) => {
-                return Err(Error::TempDirError { err });
-            },
-        };
+        let dir = TempDir::new().map_err(|source| Error::TempDirError { source })?;
 
         // Download the file
         let tar_path: PathBuf = dir.path().join("repo.tar.gz");
         let dir_path: PathBuf = dir.path().join("repo");
-        if let Err(err) = brane_shr::fs::download_file_async(&url, &tar_path, DownloadSecurity { checksum: None, https: true }, None).await {
-            return Err(Error::RepoDownloadError { repo: url, target: dir_path, err });
-        }
-        if let Err(err) = brane_shr::fs::unarchive_async(&tar_path, &dir_path).await {
-            return Err(Error::RepoUnpackError { tar: tar_path, target: dir_path, err });
-        }
+        brane_shr::fs::download_file_async(&url, &tar_path, DownloadSecurity { checksum: None, https: true }, None)
+            .await
+            .map_err(|source| Error::RepoDownloadError { repo: url, target: dir_path.clone(), source })?;
+        brane_shr::fs::unarchive_async(&tar_path, &dir_path).await.map_err(|source| Error::RepoUnpackError {
+            tar: tar_path,
+            target: dir_path.clone(),
+            source,
+        })?;
+
         // Resolve that one weird folder in there
-        let dir_path: PathBuf = match brane_shr::fs::recurse_in_only_child_async(&dir_path).await {
-            Ok(path) => path,
-            Err(err) => {
-                return Err(Error::RepoRecurseError { target: dir_path, err });
-            },
-        };
+        let dir_path: PathBuf = brane_shr::fs::recurse_in_only_child_async(&dir_path)
+            .await
+            .map_err(|source| Error::RepoRecurseError { target: dir_path.clone(), source })?;
 
         // Read that as the migrations
-        let migrations: FileBasedMigrations = match FileBasedMigrations::find_migrations_directory_in_path(&dir_path) {
-            Ok(migrations) => migrations,
-            Err(err) => return Err(Error::MigrationsRetrieve { path: dir_path, err }),
-        };
+        let migrations: FileBasedMigrations = FileBasedMigrations::find_migrations_directory_in_path(&dir_path)
+            .map_err(|source| Error::MigrationsRetrieve { path: dir_path.clone(), source })?;
+
         (dir, migrations)
     };
 
@@ -1370,15 +1303,11 @@ pub async fn policy_database(fix_dirs: bool, path: PathBuf, branch: String) -> R
     {
         // Connect to the database
         debug!("Applying migrations...");
-        let mut conn: SqliteConnection = match SqliteConnection::establish(&path.display().to_string()) {
-            Ok(conn) => conn,
-            Err(err) => return Err(Error::DatabaseConnect { path, err }),
-        };
+        let mut conn: SqliteConnection =
+            SqliteConnection::establish(&path.display().to_string()).map_err(|source| Error::DatabaseConnect { path: path.clone(), source })?;
 
         // Attempt to run the migration
-        if let Err(err) = conn.run_pending_migrations(migrations) {
-            return Err(Error::MigrationsApply { path, err });
-        }
+        conn.run_pending_migrations(migrations).map_err(|source| Error::MigrationsApply { path: path.clone(), source })?;
     }
 
     // Done
@@ -1435,13 +1364,12 @@ pub fn policy_secret(fix_dirs: bool, path: PathBuf, key_id: String, key_alg: Key
     // Write it to a file
     debug!("Writing secret to '{}'...", path.display());
     ensure_dir_of(&path, fix_dirs)?;
-    let handle: File = match File::create(&path) {
-        Ok(handle) => handle,
-        Err(err) => return Err(Error::FileCreateError { what: "policy secret", path, err }),
-    };
-    if let Err(err) = serde_json::to_writer_pretty(handle, &secret) {
-        return Err(Error::FileSerializeError { what: "policy secret", path, err });
-    }
+    let handle: File = File::create(&path).map_err(|source| Error::FileCreateError { what: "policy secret", path: path.clone(), source })?;
+    serde_json::to_writer_pretty(handle, &secret).map_err(|source| Error::FileSerializeError {
+        what: "policy secret",
+        path: path.clone(),
+        source,
+    })?;
 
     // OK
     println!("Successfully generated {}", style(path.display()).bold().green());
@@ -1464,17 +1392,12 @@ pub fn policy_token(fix_dirs: bool, path: PathBuf, secret_path: PathBuf, initiat
     info!("Generating policy_token.json at '{}'...", path.display());
 
     // Use the backend to do this
-    let token: String = match generate_policy_token(initiator, system, exp, secret_path) {
-        Ok(token) => token,
-        Err(err) => return Err(Error::TokenGenerate { err }),
-    };
+    let token: String = generate_policy_token(initiator, system, exp, secret_path).map_err(|source| Error::TokenGenerate { source })?;
 
     // Finally, write that to a file
     debug!("Writing token to '{}'...", path.display());
     ensure_dir_of(&path, fix_dirs)?;
-    if let Err(err) = fs::write(&path, token) {
-        return Err(Error::FileWriteError { what: "policy token", path, err });
-    }
+    fs::write(&path, token).map_err(|source| Error::FileWriteError { what: "policy token", path: path.clone(), source })?;
 
     // OK
     println!("Successfully generated {}", style(path.display()).bold().green());
@@ -1514,21 +1437,13 @@ pub fn proxy(
     ensure_dir_of(&path, fix_dirs)?;
 
     // Open the file to write it to
-    let mut handle: File = match File::create(&path) {
-        Ok(handle) => handle,
-        Err(err) => {
-            return Err(Error::FileCreateError { what: "proxy.yml", path, err });
-        },
-    };
+    let mut handle: File = File::create(&path).map_err(|source| Error::FileCreateError { what: "proxy.yml", path: path.clone(), source })?;
 
     // Write the header
-    if let Err(err) = write_proxy_header(&mut handle) {
-        return Err(Error::FileHeaderWriteError { what: "proxy.yml", path, err });
-    }
+    write_proxy_header(&mut handle).map_err(|source| Error::FileHeaderWriteError { what: "proxy.yml", path: path.clone(), source })?;
+
     // Write the contents
-    if let Err(err) = proxy.to_writer(handle, true) {
-        return Err(Error::FileBodyWriteError { what: "proxy.yml", path, err });
-    }
+    proxy.to_writer(handle, true).map_err(|source| Error::FileBodyWriteError { what: "proxy.yml", path: path.clone(), source })?;
 
     // Done
     println!("Successfully generated {}", style(path.display().to_string()).bold().green());

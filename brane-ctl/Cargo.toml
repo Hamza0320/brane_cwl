@@ -46,6 +46,7 @@ serde_json = "1.0.120"
 serde_yaml = { version = "0.0.10", package = "serde_yml" }
 shlex = "1.1.0"
 tempfile = "3.10.1"
+thiserror = "2.0.0"
 tokio = { version = "1.38.0", features = [] }
 
 brane-cfg = { path = "../brane-cfg" }

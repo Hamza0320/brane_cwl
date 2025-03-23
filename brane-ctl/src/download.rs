@@ -59,32 +59,27 @@ async fn download_brane_services(address: impl AsRef<str>, path: impl AsRef<Path
 
     // Create a temporary directory to download the tar file to.
     debug!("Creating temporary directory...");
-    let temp: TempDir = match TempDir::new() {
-        Ok(temp) => temp,
-        Err(err) => {
-            return Err(Error::TempDirError { err });
-        },
-    };
+    let temp: TempDir = TempDir::new().map_err(|source| Error::TempDirError { source })?;
     let tar_path: PathBuf = temp.path().join(format!("{tar_name}.tar.gz"));
 
     // Download it
-    if let Err(err) = download_file_async(address, &tar_path, DownloadSecurity::https(), Some(Style::new().green().bold())).await {
+    if let Err(source) = download_file_async(address, &tar_path, DownloadSecurity::https(), Some(Style::new().green().bold())).await {
         // Don't call the destructor of `TempDir`, since it's much easier to debug if it lives after creation
         // SAFETY: This is OK because for our committed version, the destructor of `TempDir` only destroys the directory itself using a normal `std::fs::remove_dir_all()` call, and so nothing will explode if that does not happen.
         // (see https://docs.rs/tempfile/3.3.0/src/tempfile/dir.rs.html#403-407)
         std::mem::forget(temp);
-        return Err(Error::DownloadError { address: address.into(), path: tar_path, err: Box::new(err) });
+        return Err(Error::DownloadError { address: address.into(), path: tar_path, source: Box::new(source) });
     }
 
     // Extract the folder to the same temporary directory
     println!("Unpacking {}...", style(format!("{tar_name}.tar.gz")).bold().green());
     let dir_path: PathBuf = temp.path().join("services");
-    if let Err(err) = unarchive_async(&tar_path, &dir_path).await {
+    if let Err(source) = unarchive_async(&tar_path, &dir_path).await {
         // Don't call the destructor of `TempDir`, since it's much easier to debug if it lives after creation
         // SAFETY: This is OK because for our committed version, the destructor of `TempDir` only destroys the directory itself using a normal `std::fs::remove_dir_all()` call, and so nothing will explode if that does not happen.
         // (see https://docs.rs/tempfile/3.3.0/src/tempfile/dir.rs.html#403-407)
         std::mem::forget(temp);
-        return Err(Error::UnarchiveError { tar: tar_path, target: dir_path, err: Box::new(err) });
+        return Err(Error::UnarchiveError { tar: tar_path, target: dir_path, source: Box::new(source) });
     }
     // Be sure to do the folder inside the archive
     let dir_path: PathBuf = dir_path.join(tar_name);
@@ -92,25 +87,24 @@ async fn download_brane_services(address: impl AsRef<str>, path: impl AsRef<Path
     // Now copy the images in that folder to the target directory
     let entries: ReadDir = match fs::read_dir(&dir_path) {
         Ok(entries) => entries,
-        Err(err) => {
+        Err(source) => {
             // Don't call the destructor of `TempDir`, since it's much easier to debug if it lives after creation
             // SAFETY: This is OK because for our committed version, the destructor of `TempDir` only destroys the directory itself using a normal `std::fs::remove_dir_all()` call, and so nothing will explode if that does not happen.
             // (see https://docs.rs/tempfile/3.3.0/src/tempfile/dir.rs.html#403-407)
             std::mem::forget(temp);
-            return Err(Error::ReadDirError { path: dir_path, err });
+            return Err(Error::ReadDirError { path: dir_path, source });
         },
     };
     let mut i: usize = 0;
     for entry in entries {
-        // Unwrap the entry
         let entry: DirEntry = match entry {
             Ok(entry) => entry,
-            Err(err) => {
+            Err(source) => {
                 // Don't call the destructor of `TempDir`, since it's much easier to debug if it lives after creation
                 // SAFETY: This is OK because for our committed version, the destructor of `TempDir` only destroys the directory itself using a normal `std::fs::remove_dir_all()` call, and so nothing will explode if that does not happen.
                 // (see https://docs.rs/tempfile/3.3.0/src/tempfile/dir.rs.html#403-407)
                 std::mem::forget(temp);
-                return Err(Error::ReadEntryError { path: dir_path, entry: i, err });
+                return Err(Error::ReadEntryError { path: dir_path, entry: i, source });
             },
         };
 
@@ -137,12 +131,12 @@ async fn download_brane_services(address: impl AsRef<str>, path: impl AsRef<Path
         let out_path: PathBuf = path.join(entry_name.as_ref());
         if force || !out_path.exists() {
             debug!("Moving '{}' to '{}'...", entry_path.display(), out_path.display());
-            if let Err(err) = move_path_async(&entry_path, &out_path).await {
+            if let Err(source) = move_path_async(&entry_path, &out_path).await {
                 // Don't call the destructor of `TempDir`, since it's much easier to debug if it lives after creation
                 // SAFETY: This is OK because for our committed version, the destructor of `TempDir` only destroys the directory itself using a normal `std::fs::remove_dir_all()` call, and so nothing will explode if that does not happen.
                 // (see https://docs.rs/tempfile/3.3.0/src/tempfile/dir.rs.html#403-407)
                 std::mem::forget(temp);
-                return Err(Error::MoveError { source: entry_path, target: out_path, err: Box::new(err) });
+                return Err(Error::MoveError { original: entry_path, target: out_path, source: Box::new(source) });
             }
         }
 
@@ -212,22 +206,16 @@ pub async fn services(
                     stack.push(comp);
                     if !stack.exists() {
                         // Create the directory first
-                        if let Err(err) = fs::create_dir(&stack) {
-                            return Err(Error::DirCreateError { what: "output", path: stack, err });
-                        }
+                        fs::create_dir(&stack).map_err(|source| Error::DirCreateError { what: "output", path: stack.clone(), source })?;
 
                         // Then create the CACHEDIR.TAG if we haven't already
                         if first {
                             let tag_path: PathBuf = stack.join("CACHEDIR.TAG");
-                            let mut handle: File = match File::create(&tag_path) {
-                                Ok(handle) => handle,
-                                Err(err) => return Err(Error::CachedirTagCreate { path: tag_path, err }),
-                            };
-                            if let Err(err) = handle.write(
+                            let mut handle: File =
+                                File::create(&tag_path).map_err(|source| Error::CachedirTagCreate { path: tag_path.clone(), source })?;
+                            handle.write(
                                 b"Signature: 8a477f597d28d172789f06886806bc55\n# This file is a cache directory tag created by BRANE's `branectl`.\n# For information about cache directory tags, see:\n#	    https://www.brynosaurus.com/cachedir/\n",
-                            ) {
-                                return Err(Error::CachedirTagWrite { path: tag_path, err })
-                            }
+                            ).map_err(|source| Error::CachedirTagWrite { path: tag_path, source })?;
                             first = false;
                         }
                     }
@@ -270,12 +258,8 @@ pub async fn services(
 
         DownloadServicesSubcommand::Auxillary { socket, client_version } => {
             // Attempt to connect to the local Docker daemon.
-            let docker: Docker = match connect_local(DockerOptions { socket: socket.clone(), version: *client_version }) {
-                Ok(docker) => docker,
-                Err(err) => {
-                    return Err(Error::DockerConnectError { err });
-                },
-            };
+            let docker: Docker = connect_local(DockerOptions { socket: socket.clone(), version: *client_version })
+                .map_err(|source| Error::DockerConnectError { source })?;
 
             // Download the pre-determined set of auxillary images
             for (name, image) in AUXILLARY_DOCKER_IMAGES {
@@ -288,15 +272,18 @@ pub async fn services(
 
                 // Make sure the image is pulled
                 println!("Downloading auxillary image {}...", style(image).bold().green());
-                if let Err(err) = ensure_image(&docker, Image::new(name, None::<&str>, None::<&str>), ImageSource::Registry(image.into())).await {
-                    return Err(Error::PullError { name: name.into(), image: image.into(), err });
-                }
+                ensure_image(&docker, Image::new(name, None::<&str>, None::<&str>), ImageSource::Registry(image.into()))
+                    .await
+                    .map_err(|source| Error::PullError { name: name.into(), image: image.into(), source })?;
 
                 // Save the image to the correct path
                 println!("Exporting auxillary image {}...", style(name).bold().green());
-                if let Err(err) = save_image(&docker, Image::from(image), &image_path).await {
-                    return Err(Error::SaveError { name: name.into(), image: image.into(), path: image_path, err });
-                }
+                save_image(&docker, Image::from(image), &image_path).await.map_err(|source| Error::SaveError {
+                    name: name.into(),
+                    image: image.into(),
+                    path: image_path,
+                    source,
+                })?;
             }
         },
     }

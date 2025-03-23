@@ -45,12 +45,7 @@ pub async fn hash(node_config_path: impl Into<PathBuf>, image: impl Into<String>
 
     // Load the node config file
     debug!("Loading node config file '{}'...", node_config_path.display());
-    let node_config: NodeConfig = match NodeConfig::from_path(&node_config_path) {
-        Ok(config) => config,
-        Err(err) => {
-            return Err(Error::NodeConfigLoadError { err });
-        },
-    };
+    let node_config: NodeConfig = NodeConfig::from_path(&node_config_path).map_err(|source| Error::NodeConfigLoadError { source })?;
     let packages_path: PathBuf = match node_config.node {
         NodeSpecificConfig::Central(node) => node.paths.packages,
         NodeSpecificConfig::Worker(node) => node.paths.packages,
@@ -68,29 +63,17 @@ pub async fn hash(node_config_path: impl Into<PathBuf>, image: impl Into<String>
         // It needs more work
 
         // Split the image into a name and possible version number
-        let (name, version): (String, Version) = match Version::from_package_pair(&image) {
-            Ok(res) => res,
-            Err(err) => {
-                return Err(Error::IllegalNameVersionPair { raw: image, err });
-            },
-        };
+        let (name, version): (String, Version) =
+            Version::from_package_pair(&image).map_err(|source| Error::IllegalNameVersionPair { raw: image, source })?;
 
         // Start reading the packages directory
-        let entries: ReadDir = match fs::read_dir(&packages_path) {
-            Ok(entries) => entries,
-            Err(err) => {
-                return Err(Error::DirReadError { what: "packages", path: packages_path, err });
-            },
-        };
+        let entries: ReadDir =
+            fs::read_dir(&packages_path).map_err(|source| Error::DirReadError { what: "packages", path: packages_path.clone(), source })?;
         let mut file: Option<(PathBuf, Version)> = None;
         for (i, entry) in entries.enumerate() {
             // Unwrap the entry
-            let entry: DirEntry = match entry {
-                Ok(entry) => entry,
-                Err(err) => {
-                    return Err(Error::DirEntryReadError { what: "packages", entry: i, path: packages_path, err });
-                },
-            };
+            let entry: DirEntry =
+                entry.map_err(|source| Error::DirEntryReadError { what: "packages", entry: i, path: packages_path.clone(), source })?;
 
             // Attempt to analyse the filename by parsing it as a (name, version) pair
             let entry_name: OsString = entry.file_name();
@@ -151,12 +134,7 @@ pub async fn hash(node_config_path: impl Into<PathBuf>, image: impl Into<String>
 
     // With the image resolved, hash it
     debug!("Hashing image '{}'...", image_path.display());
-    let hash: String = match docker::hash_container(&image_path).await {
-        Ok(hash) => hash,
-        Err(err) => {
-            return Err(Error::HashError { err });
-        },
-    };
+    let hash: String = docker::hash_container(&image_path).await.map_err(|source| Error::HashError { source })?;
 
     // Write it
     println!("{hash}");

@@ -46,12 +46,7 @@ pub fn compose(kind: ResolvableNodeKind, fix_dirs: bool, path: impl AsRef<Path>,
             debug!("Resolving node kind using '{}'...", node_config_path.display());
 
             // Load the node config file to resolve the kind
-            let node_config: NodeConfig = match NodeConfig::from_path(node_config_path) {
-                Ok(config) => config,
-                Err(err) => {
-                    return Err(Error::NodeConfigError { err });
-                },
-            };
+            let node_config: NodeConfig = NodeConfig::from_path(node_config_path).map_err(|source| Error::NodeConfigError { source })?;
 
             // Return the kind
             node_config.node.kind()
@@ -69,9 +64,7 @@ pub fn compose(kind: ResolvableNodeKind, fix_dirs: bool, path: impl AsRef<Path>,
         if !parent.exists() {
             // Either fix or fail
             if fix_dirs {
-                if let Err(err) = fs::create_dir_all(parent) {
-                    return Err(Error::TargetDirCreateError { path: parent.into(), err });
-                }
+                fs::create_dir_all(parent).map_err(|source| Error::TargetDirCreateError { path: parent.into(), source })?;
             } else {
                 return Err(Error::TargetDirNotFound { path: parent.into() });
             }
@@ -92,9 +85,7 @@ pub fn compose(kind: ResolvableNodeKind, fix_dirs: bool, path: impl AsRef<Path>,
 
     // Attempt to write it
     debug!("Writing file to '{}'...", path.display());
-    if let Err(err) = fs::write(&path, compose) {
-        return Err(Error::FileWriteError { what: "Docker Compose", path, err });
-    }
+    fs::write(&path, compose).map_err(|source| Error::FileWriteError { what: "Docker Compose", path, source })?;
 
     // OK, done
     Ok(())

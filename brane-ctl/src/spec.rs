@@ -168,15 +168,15 @@ where
         let send: &str = &s[dpos + 1..];
 
         // Parse them
-        let start: T = T::from_str(sstart).map_err(|err| InclusiveRangeParseError::NumberParseError {
-            what: std::any::type_name::<T>(),
-            raw:  sstart.into(),
-            err:  Box::new(err),
+        let start: T = T::from_str(sstart).map_err(|source| InclusiveRangeParseError::NumberParseError {
+            what:   std::any::type_name::<T>(),
+            raw:    sstart.into(),
+            source: Box::new(source),
         })?;
-        let end: T = T::from_str(send).map_err(|err| InclusiveRangeParseError::NumberParseError {
-            what: std::any::type_name::<T>(),
-            raw:  send.into(),
-            err:  Box::new(err),
+        let end: T = T::from_str(send).map_err(|source| InclusiveRangeParseError::NumberParseError {
+            what:   std::any::type_name::<T>(),
+            raw:    send.into(),
+            source: Box::new(source),
         })?;
 
         // Assert the order is correct
@@ -223,15 +223,15 @@ where
         let svalue: &str = &s[sep_pos + 1..];
 
         // Attempt to parse the something as the key
-        let key: K = K::from_str(skey).map_err(|err| PairParseError::IllegalSomething {
-            what: std::any::type_name::<K>(),
-            raw:  skey.into(),
-            err:  Box::new(err),
+        let key: K = K::from_str(skey).map_err(|source| PairParseError::IllegalSomething {
+            what:   std::any::type_name::<K>(),
+            raw:    skey.into(),
+            source: Box::new(source),
         })?;
-        let value: V = V::from_str(svalue).map_err(|err| PairParseError::IllegalSomething {
-            what: std::any::type_name::<V>(),
-            raw:  svalue.into(),
-            err:  Box::new(err),
+        let value: V = V::from_str(svalue).map_err(|source| PairParseError::IllegalSomething {
+            what:   std::any::type_name::<V>(),
+            raw:    svalue.into(),
+            source: Box::new(source),
         })?;
 
         // OK, return ourselves

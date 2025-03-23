@@ -86,10 +86,7 @@ struct ComposeOverrideFileService {
 #[inline]
 fn canonicalize(path: impl AsRef<Path>) -> Result<PathBuf, Error> {
     let path: &Path = path.as_ref();
-    match path.canonicalize() {
-        Ok(path) => Ok(path),
-        Err(err) => Err(Error::CanonicalizeError { path: path.into(), err }),
-    }
+    path.canonicalize().map_err(|source| Error::CanonicalizeError { path: path.into(), source })
 }
 
 /// Makes the given path join canonical, casting the error for convenience.
@@ -113,10 +110,7 @@ fn canonicalize_join(lhs: impl AsRef<Path>, rhs: impl AsRef<Path>) -> Result<Pat
     let path: Cow<Path> = if rhs.is_relative() { Cow::Owned(lhs.join(rhs)) } else { Cow::Borrowed(rhs) };
 
     // Canonicalize the result
-    match path.canonicalize() {
-        Ok(path) => Ok(path),
-        Err(err) => Err(Error::CanonicalizeError { path: path.into(), err }),
-    }
+    path.canonicalize().map_err(|source| Error::CanonicalizeError { path: path.into(), source })
 }
 
 /// Resolves the given path to replace '$NODE' with the actual node type.
@@ -243,31 +237,24 @@ fn resolve_docker_compose_file(file: Option<PathBuf>, kind: NodeKind, mut versio
                 debug!("Unpacking baked-in {} Docker Compose file to '{}'...", kind, compose_path.display());
 
                 // Attempt to open the target location
-                let mut handle: File = match File::create(&compose_path) {
-                    Ok(handle) => handle,
-                    Err(err) => {
-                        return Err(Error::DockerComposeCreateError { path: compose_path, err });
-                    },
-                };
+                let mut handle: File =
+                    File::create(&compose_path).map_err(|source| Error::DockerComposeCreateError { path: compose_path.clone(), source })?;
 
                 // Write the correct file to it
                 match kind {
                     NodeKind::Central => {
-                        if let Err(err) = write!(handle, "{}", include_str!("../../docker-compose-central.yml")) {
-                            return Err(Error::DockerComposeWriteError { path: compose_path, err });
-                        }
+                        write!(handle, "{}", include_str!("../../docker-compose-central.yml"))
+                            .map_err(|source| Error::DockerComposeWriteError { path: compose_path.clone(), source })?;
                     },
 
                     NodeKind::Worker => {
-                        if let Err(err) = write!(handle, "{}", include_str!("../../docker-compose-worker.yml")) {
-                            return Err(Error::DockerComposeWriteError { path: compose_path, err });
-                        }
+                        write!(handle, "{}", include_str!("../../docker-compose-worker.yml"))
+                            .map_err(|source| Error::DockerComposeWriteError { path: compose_path.clone(), source })?;
                     },
 
                     NodeKind::Proxy => {
-                        if let Err(err) = write!(handle, "{}", include_str!("../../docker-compose-proxy.yml")) {
-                            return Err(Error::DockerComposeWriteError { path: compose_path, err });
-                        }
+                        write!(handle, "{}", include_str!("../../docker-compose-proxy.yml"))
+                            .map_err(|source| Error::DockerComposeWriteError { path: compose_path.clone(), source })?;
                     },
                 }
             }
@@ -325,9 +312,7 @@ fn prepare_host(node_config: &NodeConfig) -> Result<(), Error> {
             if let Some(policy_audit_log) = policy_audit_log {
                 if !policy_audit_log.exists() {
                     debug!("Generating empty persistent audit log at '{}'...", policy_audit_log.display());
-                    if let Err(err) = File::create(policy_audit_log) {
-                        return Err(Error::AuditLogCreate { path: policy_audit_log.clone(), err });
-                    }
+                    File::create(policy_audit_log).map_err(|source| Error::AuditLogCreate { path: policy_audit_log.clone(), source })?;
                 }
             }
 
@@ -378,12 +363,7 @@ fn generate_override_file(node_config: &NodeConfig, hosts: &HashMap<String, IpAd
                 // Open the extra ports
 
                 // Read the proxy file to find the incoming ports
-                let proxy: proxy::ProxyConfig = match proxy::ProxyConfig::from_path(proxy_path) {
-                    Ok(proxy) => proxy,
-                    Err(err) => {
-                        return Err(Error::ProxyReadError { err });
-                    },
-                };
+                let proxy: proxy::ProxyConfig = proxy::ProxyConfig::from_path(proxy_path).map_err(|source| Error::ProxyReadError { source })?;
 
                 // Open both the management and the incoming ports now
                 prx_svc.ports.reserve(proxy.incoming.len());
@@ -409,12 +389,7 @@ fn generate_override_file(node_config: &NodeConfig, hosts: &HashMap<String, IpAd
                 // Open the extra ports
 
                 // Read the proxy file to find the incoming ports
-                let proxy: proxy::ProxyConfig = match proxy::ProxyConfig::from_path(proxy_path) {
-                    Ok(proxy) => proxy,
-                    Err(err) => {
-                        return Err(Error::ProxyReadError { err });
-                    },
-                };
+                let proxy: proxy::ProxyConfig = proxy::ProxyConfig::from_path(proxy_path).map_err(|source| Error::ProxyReadError { source })?;
 
                 // Open both the management and the incoming ports now
                 prx_svc.ports.reserve(proxy.incoming.len());
@@ -446,12 +421,7 @@ fn generate_override_file(node_config: &NodeConfig, hosts: &HashMap<String, IpAd
             // Read the management port
             let manage_port: u16 = node.services.prx.bind.port();
             // Read the proxy file to find the incoming ports
-            let proxy: proxy::ProxyConfig = match proxy::ProxyConfig::from_path(&node.paths.proxy) {
-                Ok(proxy) => proxy,
-                Err(err) => {
-                    return Err(Error::ProxyReadError { err });
-                },
-            };
+            let proxy: proxy::ProxyConfig = proxy::ProxyConfig::from_path(&node.paths.proxy).map_err(|source| Error::ProxyReadError { source })?;
             // Find the start & stop ports of the outgoing range
             let start: u16 = *proxy.outgoing_range.start();
             let end: u16 = *proxy.outgoing_range.end();
@@ -472,17 +442,12 @@ fn generate_override_file(node_config: &NodeConfig, hosts: &HashMap<String, IpAd
     // Attemp to open the file to write that to
     let compose_path: PathBuf = PathBuf::from("/tmp")
         .join(format!("docker-compose-override-{}.yml", rand::rng().sample_iter(&Alphanumeric).take(3).map(char::from).collect::<String>()));
-    let handle: File = match File::create(&compose_path) {
-        Ok(handle) => handle,
-        Err(err) => {
-            return Err(Error::HostsFileCreateError { path: compose_path, err });
-        },
-    };
+    let handle: File = File::create(&compose_path).map_err(|source| Error::HostsFileCreateError { path: compose_path.clone(), source })?;
 
     // Now write the map in the correct format
     match serde_yaml::to_writer(handle, &overridefile) {
         Ok(_) => Ok(Some(compose_path)),
-        Err(err) => Err(Error::HostsFileWriteError { path: compose_path, err }),
+        Err(source) => Err(Error::HostsFileWriteError { path: compose_path, source }),
     }
 }
 
@@ -500,21 +465,16 @@ fn generate_override_file(node_config: &NodeConfig, hosts: &HashMap<String, IpAd
 /// This function errors if the given images could not be loaded.
 async fn load_images(docker: &Docker, images: HashMap<impl AsRef<str>, ImageSource>, version: &Version) -> Result<(), Error> {
     // Iterate over the images
-    for (name, source) in images {
+    for (name, image_source) in images {
         let name: &str = name.as_ref();
 
         // Determine whether to pull as file or as a repo thing
-        let image: Image = match &source {
+        let image: Image = match &image_source {
             ImageSource::Path(path) => {
                 println!("Loading image {} from file {}...", style(name).green().bold(), style(path.display().to_string()).bold());
 
                 // Load the digest, too
-                let digest: String = match get_digest(path).await {
-                    Ok(digest) => digest,
-                    Err(err) => {
-                        return Err(Error::ImageDigestError { path: path.into(), err });
-                    },
-                };
+                let digest: String = get_digest(path).await.map_err(|source| Error::ImageDigestError { path: path.into(), source })?;
 
                 // Return it
                 Image::new(name, Some(version), Some(digest))
@@ -527,9 +487,11 @@ async fn load_images(docker: &Docker, images: HashMap<impl AsRef<str>, ImageSour
         };
 
         // Simply rely on ensure_image
-        if let Err(err) = ensure_image(docker, &image, &source).await {
-            return Err(Error::ImageLoadError { image: Box::new(image), source: Box::new(source), err });
-        }
+        ensure_image(docker, &image, &image_source).await.map_err(|source| Error::ImageLoadError {
+            image: Box::new(image),
+            image_source: Box::new(image_source),
+            source,
+        })?;
     }
 
     // Done
@@ -746,10 +708,11 @@ fn run_compose(
     debug!("Command: {:?}", cmd);
     let output: Output = match cmd.output() {
         Ok(output) => output,
-        Err(err) => {
-            return Err(Error::JobLaunchError { command: cmd, err });
+        Err(source) => {
+            return Err(Error::JobLaunchError { command: cmd, source });
         },
     };
+
     if !output.status.success() {
         return Err(Error::JobFailure { command: cmd, status: output.status });
     }
@@ -796,12 +759,7 @@ pub async fn start(
 
     // Start by loading the node config file
     debug!("Loading node config file '{}'...", node_config_path.display());
-    let node_config: NodeConfig = match NodeConfig::from_path(&node_config_path) {
-        Ok(config) => config,
-        Err(err) => {
-            return Err(Error::NodeConfigLoadError { err });
-        },
-    };
+    let node_config: NodeConfig = NodeConfig::from_path(&node_config_path).map_err(|source| Error::NodeConfigLoadError { source })?;
 
     // Resolve the Docker Compose file
     debug!("Resolving Docker Compose file...");
@@ -816,12 +774,7 @@ pub async fn start(
             }
 
             // Connect to the Docker client
-            let docker: Docker = match brane_tsk::docker::connect_local(docker_opts) {
-                Ok(docker) => docker,
-                Err(err) => {
-                    return Err(Error::DockerConnectError { err });
-                },
-            };
+            let docker: Docker = brane_tsk::docker::connect_local(docker_opts).map_err(|source| Error::DockerConnectError { source })?;
 
             // Generate hosts file
             let overridefile: Option<PathBuf> = generate_override_file(&node_config, &node_config.hostnames, opts.profile_dir)?;
@@ -863,12 +816,7 @@ pub async fn start(
             }
 
             // Connect to the Docker client
-            let docker: Docker = match brane_tsk::docker::connect_local(docker_opts) {
-                Ok(docker) => docker,
-                Err(err) => {
-                    return Err(Error::DockerConnectError { err });
-                },
-            };
+            let docker: Docker = brane_tsk::docker::connect_local(docker_opts).map_err(|source| Error::DockerConnectError { source })?;
 
             // Generate some things that we might need before we actually hit run
             prepare_host(&node_config)?;
@@ -911,12 +859,7 @@ pub async fn start(
             }
 
             // Connect to the Docker client
-            let docker: Docker = match brane_tsk::docker::connect_local(docker_opts) {
-                Ok(docker) => docker,
-                Err(err) => {
-                    return Err(Error::DockerConnectError { err });
-                },
-            };
+            let docker: Docker = brane_tsk::docker::connect_local(docker_opts).map_err(|source| Error::DockerConnectError { source })?;
 
             // Generate hosts file
             let overridefile: Option<PathBuf> = generate_override_file(&node_config, &node_config.hostnames, opts.profile_dir)?;
@@ -976,12 +919,7 @@ pub fn stop(compose_verbose: bool, exe: impl AsRef<str>, file: Option<PathBuf>, 
 
     // Start by loading the node config file
     debug!("Loading node config file '{}'...", node_config_path.display());
-    let node_config: NodeConfig = match NodeConfig::from_path(&node_config_path) {
-        Ok(config) => config,
-        Err(err) => {
-            return Err(Error::NodeConfigLoadError { err });
-        },
-    };
+    let node_config: NodeConfig = NodeConfig::from_path(&node_config_path).map_err(|source| Error::NodeConfigLoadError { source })?;
 
     // Resolve the Docker Compose file
     debug!("Resolving Docker Compose file...");
@@ -1023,8 +961,8 @@ pub fn stop(compose_verbose: bool, exe: impl AsRef<str>, file: Option<PathBuf>, 
     debug!("Command: {:?}", cmd);
     let output: Output = match cmd.output() {
         Ok(output) => output,
-        Err(err) => {
-            return Err(Error::JobLaunchError { command: cmd, err });
+        Err(source) => {
+            return Err(Error::JobLaunchError { command: cmd, source });
         },
     };
     if !output.status.success() {
@@ -1046,12 +984,7 @@ pub async fn logs(exe: impl AsRef<str>, file: Option<PathBuf>, node_config_path:
 
     // Start by loading the node config file
     debug!("Loading node config file '{}'...", node_config_path.display());
-    let node_config: NodeConfig = match NodeConfig::from_path(&node_config_path) {
-        Ok(config) => config,
-        Err(err) => {
-            return Err(Error::NodeConfigLoadError { err });
-        },
-    };
+    let node_config: NodeConfig = NodeConfig::from_path(&node_config_path).map_err(|source| Error::NodeConfigLoadError { source })?;
 
     let version = Version::from_str(env!("CARGO_PKG_VERSION")).unwrap();
 
