@@ -758,6 +758,7 @@ dependencies = [
  "serde_json",
  "serde_json_any_key",
  "specifications 3.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
  "tonic 0.12.3",

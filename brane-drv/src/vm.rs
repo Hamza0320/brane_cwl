@@ -567,20 +567,20 @@ impl InstanceVm {
                         return (self, Err(Error::IllegalNodeConfig { path, got: cfg.node.variant().to_string() }));
                     },
                 },
-                Err(err) => {
+                Err(source) => {
                     let path: PathBuf = global.node_config_path.clone();
                     drop(global);
-                    return (self, Err(Error::NodeConfigLoad { path, err }));
+                    return (self, Err(Error::NodeConfigLoad { path, source }));
                 },
             };
 
             debug!("Loading infra file '{}'...", central_cfg.paths.infra.display());
             let infra: InfraFile = match InfraFile::from_path(&central_cfg.paths.infra) {
                 Ok(infra) => infra,
-                Err(err) => {
+                Err(source) => {
                     let path: PathBuf = global.node_config_path.clone();
                     drop(global);
-                    return (self, Err(Error::InfraFileLoad { path, err }));
+                    return (self, Err(Error::InfraFileLoad { path, source }));
                 },
             };
 
@@ -597,8 +597,8 @@ impl InstanceVm {
         debug!("Planning workflow on Kafka planner...");
         let plan: Workflow = match prof.nest_fut("planning (brane-drv)", |scope| InstancePlanner::plan(&plr_addr, id, workflow, scope)).await {
             Ok(plan) => plan,
-            Err(err) => {
-                return (self, Err(Error::PlanError { err }));
+            Err(source) => {
+                return (self, Err(Error::PlanError { source }));
             },
         };
 
@@ -630,8 +630,8 @@ impl InstanceVm {
         // Match the result to potentially error
         let value: FullValue = match result {
             Ok(value) => value,
-            Err(err) => {
-                return (this, Err(Error::ExecError { err }));
+            Err(source) => {
+                return (this, Err(Error::ExecError { source }));
             },
         };
 
