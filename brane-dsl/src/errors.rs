@@ -13,9 +13,6 @@
 //!   provides some nice formatting options for parser errors.
 //
 
-use std::error::Error;
-use std::fmt::{Display, Formatter, Result as FResult};
-
 use nom::error::{VerboseError, VerboseErrorKind};
 
 use crate::scanner::{Span, Tokens};
@@ -220,109 +217,61 @@ pub(crate) fn convert_scanner_error(input: Span, e: VerboseError<Span>) -> Strin
 
 /***** ERRORS *****/
 /// Defines errors that relate to the SymbolTable.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum SymbolTableError {
     /// A given function already existed in the SymbolTable and could not be easily shadowed.
+    #[error("Duplicate definition of function '{name}'")]
     DuplicateFunction { name: String, existing: TextRange, got: TextRange },
     /// A given class already existed in the SymbolTable and could not be easily shadowed.
+    #[error("Duplicate definition of class '{name}'")]
     DuplicateClass { name: String, existing: TextRange, got: TextRange },
     /// A given variable already existed in the SymbolTable and could not be easily shadowed.
+    #[error("Duplicate definition of variable '{name}'")]
     DuplicateVariable { name: String, existing: TextRange, got: TextRange },
     /// A given field (property or method) already existing in the given class.
+    #[error("Duplicate definition of field '{name}' in class '{c_name}'")]
     DuplicateField { c_name: String, name: String, existing: TextRange, got: TextRange },
 }
 
-impl Display for SymbolTableError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use SymbolTableError::*;
-        match self {
-            DuplicateFunction { name, .. } => write!(f, "Duplicate definition of function '{name}'"),
-            DuplicateClass { name, .. } => write!(f, "Duplicate definition of class '{name}'"),
-            DuplicateVariable { name, .. } => write!(f, "Duplicate definition of variable '{name}'"),
-            DuplicateField { c_name, name, .. } => write!(f, "Duplicate definition of field '{name}' in class '{c_name}'"),
-        }
-    }
-}
-
-impl Error for SymbolTableError {}
-
-
-
 /// Defines errors that occur when converting language identifiers to Language enums.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum LanguageParseError {
     /// Encountered an unknown language ID.
+    #[error("Unknown language ID '{raw}'")]
     UnknownLanguageId { raw: String },
 }
 
-impl Display for LanguageParseError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use LanguageParseError::*;
-        match self {
-            UnknownLanguageId { raw } => write!(f, "Unknown language ID '{raw}'"),
-        }
-    }
-}
-
-impl Error for LanguageParseError {}
-
 /// Defines errors that occur when converting patterns to calls.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum PatternError {
     /// The given pattern was unknown
+    #[error("Pattern '{raw}' is unknown (are you missing a package import?)")]
     UnknownPattern { raw: String, range: TextRange },
 }
 
-impl Display for PatternError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use PatternError::*;
-        match self {
-            UnknownPattern { raw, .. } => write!(f, "Pattern '{raw}' is unknown (are you missing a package import?)"),
-        }
-    }
-}
-
-impl Error for PatternError {}
-
-
-
 /// Defines errors that occur in the topmost process of conveting raw readers into Programs.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ParseError {
     /// The scanner failed to scan.
+    #[error("Syntax error: {err}")]
     ScanError { err: String },
     /// Some non-Nom error occurred while scanning.
+    #[error("Syntax error: {err}")]
     ScannerError { err: String },
     /// Not all source was parsed (indicating a syntax error).
+    #[error("Syntax error: not all input could be parsed")]
     LeftoverSourceError,
 
     /// The parser failed to parse.
+    #[error("{lang} parse error: {err}")]
     ParseError { lang: Language, err: String },
     /// Some non-Nom error occurred while parsing.
+    #[error("{lang} parse error: {err}")]
     ParserError { lang: Language, err: String },
     /// We did not have enough tokens to make an informed decision (i.e., an error occurred).
+    #[error("{lang} parse error: reached end-of-file unexpectedly ({err})")]
     Eof { lang: Language, err: String },
     /// Not all tokens were parsed (indicating an error).
+    #[error("{lang} parse error: not all input could be parsed")]
     LeftoverTokensError { lang: Language },
 }
-
-impl Display for ParseError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use self::ParseError::*;
-        match self {
-            ScanError { err } => write!(f, "Syntax error: {err}"),
-            ScannerError { err } => write!(f, "Syntax error: {err}"),
-            LeftoverSourceError => write!(f, "Syntax error: not all input could be parsed"),
-
-            ParseError { lang, err } => write!(f, "{lang} parse error: {err}"),
-            ParserError { lang, err } => write!(f, "{lang} parse error: {err}"),
-            Eof { lang, err } => write!(f, "{lang} parse error: reached end-of-file unexpectedly ({err})"),
-            LeftoverTokensError { lang } => write!(f, "{lang} parse error: not all input could be parsed"),
-        }
-    }
-}
-
-impl Error for ParseError {}
