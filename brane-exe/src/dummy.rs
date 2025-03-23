@@ -390,8 +390,8 @@ impl DummyVm {
         // Match the result to potentially error
         let value: FullValue = match result {
             Ok(value) => value,
-            Err(err) => {
-                return (this, Err(Error::ExecError { err }));
+            Err(source) => {
+                return (this, Err(Error::ExecError { source }));
             },
         };
 

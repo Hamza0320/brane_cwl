@@ -283,12 +283,7 @@ fn exec_instr(pc: ProgramCounter, idx: usize, instr: &EdgeInstr, stack: &mut Sta
             };
 
             // Attempt to cast it based on the value it is
-            let value: Value = match value.cast(res_type, fstack.table()) {
-                Ok(value) => value,
-                Err(err) => {
-                    return Err(Error::CastError { pc, instr: idx, err });
-                },
-            };
+            let value: Value = value.cast(res_type, fstack.table()).map_err(|source| Error::CastError { pc, instr: idx, source })?;
 
             // Push the value back
             stack.push(value).to_instr(pc, idx)?;
@@ -962,24 +957,20 @@ fn exec_instr(pc: ProgramCounter, idx: usize, instr: &EdgeInstr, stack: &mut Sta
 
         VarDec { def } => {
             // Simply declare it
-            if let Err(err) = fstack.declare(*def) {
-                return Err(Error::VarDecError { pc, instr: idx, err });
-            }
+            fstack.declare(*def).map_err(|source| Error::VarDecError { pc, instr: idx, source })?;
             1
         },
         VarUndec { def } => {
             // Simply undeclare it
-            if let Err(err) = fstack.undeclare(*def) {
-                return Err(Error::VarUndecError { pc, instr: idx, err });
-            }
+            fstack.undeclare(*def).map_err(|source| Error::VarUndecError { pc, instr: idx, source })?;
             1
         },
         VarGet { def } => {
             // Attempt to get the value from the variable register
             let value: Value = match fstack.get(*def) {
                 Ok(value) => value.clone(),
-                Err(err) => {
-                    return Err(Error::VarGetError { pc, instr: idx, err });
+                Err(source) => {
+                    return Err(Error::VarGetError { pc, instr: idx, source });
                 },
             };
 
@@ -989,17 +980,11 @@ fn exec_instr(pc: ProgramCounter, idx: usize, instr: &EdgeInstr, stack: &mut Sta
         },
         VarSet { def } => {
             // Pop the top value off the stack
-            let value: Value = match stack.pop() {
-                Some(value) => value,
-                None => {
-                    return Err(Error::EmptyStackError { pc, instr: Some(idx), expected: fstack.table().var(*def).data_type.clone() });
-                },
-            };
+            let value: Value =
+                stack.pop().ok_or_else(|| Error::EmptyStackError { pc, instr: Some(idx), expected: fstack.table().var(*def).data_type.clone() })?;
 
             // Set it in the register, done
-            if let Err(err) = fstack.set(*def, value) {
-                return Err(Error::VarSetError { pc, instr: idx, err });
-            };
+            fstack.set(*def, value).map_err(|source| Error::VarSetError { pc, instr: idx, source })?;
             1
         },
 
@@ -1296,12 +1281,12 @@ impl<G: CustomGlobalState, L: CustomLocalState> Thread<G, L> {
                                     Ok(access) => {
                                         data.insert(name, access);
                                     },
-                                    Err(err) => {
-                                        return EdgeResult::Err(Error::Custom { pc, err: Box::new(err) });
+                                    Err(source) => {
+                                        return EdgeResult::Err(Error::Custom { pc, source: Box::new(source) });
                                     },
                                 },
-                                Err(err) => {
-                                    return EdgeResult::Err(Error::Custom { pc, err: Box::new(err) });
+                                Err(source) => {
+                                    return EdgeResult::Err(Error::Custom { pc, source: Box::new(source) });
                                 },
                             }
                         }
@@ -1330,8 +1315,8 @@ impl<G: CustomGlobalState, L: CustomLocalState> Thread<G, L> {
                             .await
                         {
                             Ok(res) => res.map(|v| v.into_value(self.fstack.table())),
-                            Err(err) => {
-                                return EdgeResult::Err(Error::Custom { pc, err: Box::new(err) });
+                            Err(source) => {
+                                return EdgeResult::Err(Error::Custom { pc, source: Box::new(source) });
                             },
                         };
 
@@ -1340,13 +1325,13 @@ impl<G: CustomGlobalState, L: CustomLocalState> Thread<G, L> {
                             // Make the intermediate result available for next steps by possible pushing it to the next registry
                             let name: &str = result.as_ref().unwrap();
                             let path: PathBuf = name.into();
-                            if let Err(err) = prof
+                            if let Err(source) = prof
                                 .nest_fut(format!("{}::publicize()", type_name::<P>()), |scope| {
                                     P::publicize(&self.global, &self.local, at, name, &path, scope)
                                 })
                                 .await
                             {
-                                return EdgeResult::Err(Error::Custom { pc, err: Box::new(err) });
+                                return EdgeResult::Err(Error::Custom { pc, source: Box::new(source) });
                             }
 
                             // Return the new, intermediate result
@@ -1363,8 +1348,8 @@ impl<G: CustomGlobalState, L: CustomLocalState> Thread<G, L> {
                             }
 
                             // If we have it anyway, might as well push it onto the stack
-                            if let Err(err) = self.stack.push(res) {
-                                return EdgeResult::Err(Error::StackError { pc, instr: None, err });
+                            if let Err(source) = self.stack.push(res) {
+                                return EdgeResult::Err(Error::StackError { pc, instr: None, source });
                             }
                         } else if function.ret != DataType::Void {
                             return EdgeResult::Err(Error::ReturnTypeError { pc, got: DataType::Void, expected: function.ret.clone() });
@@ -1462,8 +1447,8 @@ impl<G: CustomGlobalState, L: CustomLocalState> Thread<G, L> {
                                 return EdgeResult::Err(err);
                             },
                         },
-                        Err(err) => {
-                            return EdgeResult::Err(Error::SpawnError { pc, err });
+                        Err(source) => {
+                            return EdgeResult::Err(Error::SpawnError { pc, source });
                         },
                     }
                 }
@@ -1775,8 +1760,8 @@ impl<G: CustomGlobalState, L: CustomLocalState> Thread<G, L> {
 
                 // We can now push that onto the stack, then go to next
                 if let Some(result) = result {
-                    if let Err(err) = self.stack.push(result) {
-                        return EdgeResult::Err(Error::StackError { pc, instr: None, err });
+                    if let Err(source) = self.stack.push(result) {
+                        return EdgeResult::Err(Error::StackError { pc, instr: None, source });
                     }
                 }
                 pc.jump(*next)
@@ -1800,13 +1785,13 @@ impl<G: CustomGlobalState, L: CustomLocalState> Thread<G, L> {
                     Value::Method { values, cdef, fdef } => {
                         // Insert the instance as a stack value, and only then proceed to call
                         let stack_len: usize = self.stack.len();
-                        if let Err(err) =
+                        if let Err(source) =
                             self.stack.insert(stack_len - (self.fstack.table().func(FunctionId::Func(fdef)).args.len() - 1), Value::Instance {
                                 values,
                                 def: cdef,
                             })
                         {
-                            return EdgeResult::Err(Error::StackError { pc, instr: None, err });
+                            return EdgeResult::Err(Error::StackError { pc, instr: None, source });
                         };
                         fdef
                     },
@@ -1841,11 +1826,11 @@ impl<G: CustomGlobalState, L: CustomLocalState> Thread<G, L> {
                 if sig.name == BuiltinFunctions::Print.name() {
                     // We have one variable that is a string; so print it
                     let text: String = self.stack.pop().unwrap().try_as_string().unwrap();
-                    if let Err(err) = prof
+                    if let Err(source) = prof
                         .nest_fut(format!("{}::stdout(false)", type_name::<P>()), |scope| P::stdout(&self.global, &self.local, &text, false, scope))
                         .await
                     {
-                        return EdgeResult::Err(Error::Custom { pc, err: Box::new(err) });
+                        return EdgeResult::Err(Error::Custom { pc, source: Box::new(source) });
                     }
 
                     // Done, go to the next immediately
@@ -1853,11 +1838,11 @@ impl<G: CustomGlobalState, L: CustomLocalState> Thread<G, L> {
                 } else if sig.name == BuiltinFunctions::PrintLn.name() {
                     // We have one variable that is a string; so print it
                     let text: String = self.stack.pop().unwrap().try_as_string().unwrap();
-                    if let Err(err) = prof
+                    if let Err(source) = prof
                         .nest_fut(format!("{}::stdout(true)", type_name::<P>()), |scope| P::stdout(&self.global, &self.local, &text, true, scope))
                         .await
                     {
-                        return EdgeResult::Err(Error::Custom { pc, err: Box::new(err) });
+                        return EdgeResult::Err(Error::Custom { pc, source: Box::new(source) });
                     }
 
                     // Done, go to the next immediately
@@ -1867,8 +1852,8 @@ impl<G: CustomGlobalState, L: CustomLocalState> Thread<G, L> {
                     let array: Vec<Value> = self.stack.pop().unwrap().try_as_array().unwrap();
 
                     // Push the length back onto the stack
-                    if let Err(err) = self.stack.push(Value::Integer { value: array.len() as i64 }) {
-                        return EdgeResult::Err(Error::StackError { pc, instr: None, err });
+                    if let Err(source) = self.stack.push(Value::Integer { value: array.len() as i64 }) {
+                        return EdgeResult::Err(Error::StackError { pc, instr: None, source });
                     }
 
                     // We can then go to the next one immediately
@@ -1888,26 +1873,26 @@ impl<G: CustomGlobalState, L: CustomLocalState> Thread<G, L> {
 
                     // Call the external data committer
                     let res_path: PathBuf = res_name.as_str().into();
-                    if let Err(err) = prof
+                    if let Err(source) = prof
                         .nest_fut(format!("{}::commit()", type_name::<P>()), |scope| {
                             P::commit(&self.global, &self.local, loc, &res_name, &res_path, &data_name, scope)
                         })
                         .await
                     {
-                        return EdgeResult::Err(Error::Custom { pc, err: Box::new(err) });
+                        return EdgeResult::Err(Error::Custom { pc, source: Box::new(source) });
                     };
 
                     // Push the resulting data onto the stack
-                    if let Err(err) = self.stack.push(Value::Data { name: data_name }) {
-                        return EdgeResult::Err(Error::StackError { pc, instr: None, err });
+                    if let Err(source) = self.stack.push(Value::Data { name: data_name }) {
+                        return EdgeResult::Err(Error::StackError { pc, instr: None, source });
                     }
 
                     // We can then go to the next one immediately
                     pc.jump(*next)
                 } else {
                     // Push the return address onto the frame stack and then go to the correct function
-                    if let Err(err) = self.fstack.push(def, pc.jump(*next)) {
-                        return EdgeResult::Err(Error::FrameStackPushError { pc, err });
+                    if let Err(source) = self.fstack.push(def, pc.jump(*next)) {
+                        return EdgeResult::Err(Error::FrameStackPushError { pc, source });
                     }
                     ProgramCounter::call(def)
                 }
@@ -1916,8 +1901,8 @@ impl<G: CustomGlobalState, L: CustomLocalState> Thread<G, L> {
                 // Attempt to pop the top frame off the frame stack
                 let (ret, ret_type): (ProgramCounter, DataType) = match self.fstack.pop() {
                     Ok(res) => res,
-                    Err(err) => {
-                        return EdgeResult::Err(Error::FrameStackPopError { pc, err });
+                    Err(source) => {
+                        return EdgeResult::Err(Error::FrameStackPopError { pc, source });
                     },
                 };
 
