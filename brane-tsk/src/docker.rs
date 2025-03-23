@@ -92,18 +92,8 @@ impl FromStr for ClientVersion {
         let minor: &str = &s[dot_pos + 1..];
 
         // Attempt to parse each of them as the appropriate integer type
-        let major: usize = match usize::from_str(major) {
-            Ok(major) => major,
-            Err(err) => {
-                return Err(ClientVersionParseError::IllegalMajorNumber { raw: s.into(), err });
-            },
-        };
-        let minor: usize = match usize::from_str(minor) {
-            Ok(minor) => minor,
-            Err(err) => {
-                return Err(ClientVersionParseError::IllegalMinorNumber { raw: s.into(), err });
-            },
-        };
+        let major: usize = usize::from_str(major).map_err(|source| ClientVersionParseError::IllegalMajorNumber { raw: s.into(), source })?;
+        let minor: usize = usize::from_str(minor).map_err(|source| ClientVersionParseError::IllegalMinorNumber { raw: s.into(), source })?;
 
         // Done, return the value
         Ok(ClientVersion(bollard::ClientVersion { major_version: major, minor_version: minor }))
@@ -530,12 +520,7 @@ fn preprocess_arg(
             let dst_dir: PathBuf = PathBuf::from("/data").join(data_name.name());
 
             // Generate a volume bind with that
-            binds.push(match VolumeBind::new_readonly(src_dir, &dst_dir) {
-                Ok(bind) => bind,
-                Err(err) => {
-                    return Err(ExecuteError::VolumeBindError { err });
-                },
-            });
+            binds.push(VolumeBind::new_readonly(src_dir, &dst_dir).map_err(|source| ExecuteError::VolumeBindError { source })?);
 
             // Replace the argument
             *value = FullValue::String(dst_dir.to_string_lossy().to_string());
@@ -606,16 +591,18 @@ async fn create_and_start_container(docker: &Docker, info: &ExecuteInfo) -> Resu
 
     // Run it with that config
     debug!("Launching container with name '{}' (image: {})...", info.name, info.image.name());
-    if let Err(reason) = docker.create_container(Some(create_options), create_config).await {
-        return Err(Error::CreateContainerError { name: info.name.clone(), image: Box::new(info.image.clone()), err: reason });
-    }
+    docker.create_container(Some(create_options), create_config).await.map_err(|source| Error::CreateContainerError {
+        name: info.name.clone(),
+        image: Box::new(info.image.clone()),
+        source,
+    })?;
     debug!(" > Container created");
     match docker.start_container(&container_name, None::<StartContainerOptions<String>>).await {
         Ok(_) => {
             debug!(" > Container '{}' started", container_name);
             Ok(container_name)
         },
-        Err(reason) => Err(Error::StartError { name: info.name.clone(), image: Box::new(info.image.clone()), err: reason }),
+        Err(reason) => Err(Error::StartError { name: info.name.clone(), image: Box::new(info.image.clone()), source: reason }),
     }
 }
 
@@ -634,18 +621,16 @@ async fn create_and_start_container(docker: &Docker, info: &ExecuteInfo) -> Resu
 /// This function may error for many reasons, which usually means that the container is unknown or the Docker engine is unreachable.
 async fn join_container(docker: &Docker, name: &str, keep_container: bool) -> Result<(i32, String, String), Error> {
     // Wait for the container to complete
-    if let Err(reason) = docker.wait_container(name, None::<WaitContainerOptions<String>>).try_collect::<Vec<_>>().await {
-        return Err(Error::WaitError { name: name.into(), err: reason });
-    }
+    docker
+        .wait_container(name, None::<WaitContainerOptions<String>>)
+        .try_collect::<Vec<_>>()
+        .await
+        .map_err(|source| Error::WaitError { name: name.into(), source })?;
 
     // Get stdout and stderr logs from container
     let logs_options = Some(LogsOptions::<String> { stdout: true, stderr: true, ..Default::default() });
-    let log_outputs = match docker.logs(name, logs_options).try_collect::<Vec<LogOutput>>().await {
-        Ok(out) => out,
-        Err(reason) => {
-            return Err(Error::LogsError { name: name.into(), err: reason });
-        },
-    };
+    let log_outputs =
+        docker.logs(name, logs_options).try_collect::<Vec<LogOutput>>().await.map_err(|source| Error::LogsError { name: name.into(), source })?;
 
     // Collect them in one string per output channel
     let mut stderr = String::new();
@@ -687,12 +672,7 @@ async fn returncode_container(docker: &Docker, name: impl AsRef<str>) -> Result<
     let name: &str = name.as_ref();
 
     // Do the inspect call
-    let info = match docker.inspect_container(name, None).await {
-        Ok(info) => info,
-        Err(reason) => {
-            return Err(Error::InspectContainerError { name: name.into(), err: reason });
-        },
-    };
+    let info = docker.inspect_container(name, None).await.map_err(|source| Error::InspectContainerError { name: name.into(), source })?;
 
     // Try to get the execution state from the container
     let state = match info.state {
@@ -724,10 +704,7 @@ async fn remove_container(docker: &Docker, name: impl AsRef<str>) -> Result<(), 
     let remove_options = Some(RemoveContainerOptions { force: true, ..Default::default() });
 
     // Attempt the removal
-    match docker.remove_container(name, remove_options).await {
-        Ok(_) => Ok(()),
-        Err(reason) => Err(Error::ContainerRemoveError { name: name.into(), err: reason }),
-    }
+    docker.remove_container(name, remove_options).await.map_err(|source| Error::ContainerRemoveError { name: name.into(), source })
 }
 
 /// Tries to import the image at the given path into the given Docker instance.
@@ -745,48 +722,48 @@ async fn import_image(docker: &Docker, image: impl Into<Image>, source: impl AsR
     let options = ImportImageOptions { quiet: true };
 
     // Try to read the file
-    let file = match TFile::open(source).await {
-        Ok(handle) => handle,
-        Err(reason) => {
-            return Err(Error::ImageFileOpenError { path: PathBuf::from(source), err: reason });
-        },
-    };
+    let file = TFile::open(source).await.map_err(|err_source| Error::ImageFileOpenError { path: PathBuf::from(source), source: err_source })?;
 
     // If successful, open the byte with a FramedReader, freezing all the chunk we read
     let byte_stream = FramedRead::new(file, BytesCodec::new()).map(|r| r.unwrap().freeze());
 
-    if let Err(err) = docker.import_image_stream(options, byte_stream, None).try_collect::<Vec<_>>().await {
-        return Err(Error::ImageImportError { path: PathBuf::from(source), err });
-    }
+    docker
+        .import_image_stream(options, byte_stream, None)
+        .try_collect::<Vec<_>>()
+        .await
+        .map_err(|err_source| Error::ImageImportError { path: PathBuf::from(source), source: err_source })?;
 
     // Tag it with the appropriate name & version
     let options = Some(TagImageOptions { repo: image.name.clone(), tag: image.version.clone().unwrap() });
-    match docker.tag_image(image.digest.as_ref().unwrap(), options).await {
-        Ok(_) => Ok(()),
-        Err(err) => Err(Error::ImageTagError { image: Box::new(image), source: source.to_string_lossy().to_string(), err }),
-    }
+    docker.tag_image(image.digest.as_ref().unwrap(), options).await.map_err(|err_source| Error::ImageTagError {
+        image: Box::new(image),
+        image_source: source.to_string_lossy().to_string(),
+        source: err_source,
+    })
 }
 
 /// Pulls a new image from the given Docker image ID / URL (?) and imports it in the Docker instance.
 ///
 /// # Arguments
 /// - `docker`: An already connected local instance of Docker.
-/// - `image`: The image to pull.
+/// - `image_source`: The image to pull.
 /// - `source`: The `repo/image[:tag]` to pull it from.
 ///
 /// # Errors
 /// This function errors if we failed to pull the image, e.g., the Docker engine did not know where to find it, or there was no internet.
-async fn pull_image(docker: &Docker, image: impl Into<Image>, source: impl Into<String>) -> Result<(), Error> {
+async fn pull_image(docker: &Docker, image: impl Into<Image>, image_source: impl Into<String>) -> Result<(), Error> {
     let image: Image = image.into();
-    let source: String = source.into();
+    let image_source: String = image_source.into();
 
     // Define the options for this image
-    let options = Some(CreateImageOptions { from_image: source.clone(), ..Default::default() });
+    let options = Some(CreateImageOptions { from_image: image_source.clone(), ..Default::default() });
 
     // Try to create it
-    if let Err(err) = docker.create_image(options, None, None).try_collect::<Vec<_>>().await {
-        return Err(Error::ImagePullError { source, err });
-    }
+    docker
+        .create_image(options, None, None)
+        .try_collect::<Vec<_>>()
+        .await
+        .map_err(|source| Error::ImagePullError { image_source: image_source.clone(), source })?;
 
     // Set the options
     let options: Option<TagImageOptions<_>> = Some(if let Some(version) = &image.version {
@@ -796,10 +773,11 @@ async fn pull_image(docker: &Docker, image: impl Into<Image>, source: impl Into<
     });
 
     // Now tag it
-    match docker.tag_image(&source, options).await {
-        Ok(_) => Ok(()),
-        Err(err) => Err(Error::ImageTagError { image: Box::new(image), source, err }),
-    }
+    docker.tag_image(&image_source, options).await.map_err(|source| Error::ImageTagError {
+        image: Box::new(image),
+        image_source: image_source.clone(),
+        source,
+    })
 }
 
 
@@ -822,15 +800,19 @@ pub fn connect_local(opts: impl AsRef<DockerOptions>) -> Result<Docker, Error> {
 
     // Connect to docker
     #[cfg(unix)]
-    match Docker::connect_with_unix(&opts.socket.to_string_lossy(), 900, &opts.version.0) {
-        Ok(res) => Ok(res),
-        Err(reason) => Err(Error::ConnectionError { path: opts.socket.clone(), version: opts.version.0, err: reason }),
-    }
+    return Docker::connect_with_unix(&opts.socket.to_string_lossy(), 900, &opts.version.0).map_err(|source| Error::ConnectionError {
+        path: opts.socket.clone(),
+        version: opts.version.0,
+        source,
+    });
+
     #[cfg(windows)]
-    match Docker::connect_with_named_pipe(&opts.socket.to_string_lossy(), 900, &opts.version.0) {
-        Ok(res) => Ok(res),
-        Err(reason) => Err(Error::ConnectionError { path: opts.socket.clone(), version: opts.version.0, err: reason }),
-    }
+    return Docker::connect_with_named_pipe(&opts.socket.to_string_lossy(), 900, &opts.version.0).map_err(|source| Error::ConnectionError {
+        path: opts.socket.clone(),
+        version: opts.version.0,
+        source,
+    });
+
     #[cfg(not(any(unix, windows)))]
     compile_error!("Non-Unix, non-Windows OS not supported.");
 }
@@ -877,21 +859,12 @@ pub async fn preprocess_args(
             if !src_path.is_dir() {
                 return Err(ExecuteError::ResultDirNotADir { path: src_path });
             }
-            if let Err(err) = tfs::remove_dir_all(&src_path).await {
-                return Err(ExecuteError::ResultDirRemoveError { path: src_path, err });
-            }
+            tfs::remove_dir_all(&src_path).await.map_err(|source| ExecuteError::ResultDirRemoveError { path: src_path.clone(), source })?;
         }
-        if let Err(err) = tfs::create_dir_all(&src_path).await {
-            return Err(ExecuteError::ResultDirCreateError { path: src_path, err });
-        }
+        tfs::create_dir_all(&src_path).await.map_err(|source| ExecuteError::ResultDirCreateError { path: src_path.clone(), source })?;
 
         // Add a volume bind for that
-        binds.push(match VolumeBind::new_readwrite(src_path, ref_path) {
-            Ok(bind) => bind,
-            Err(err) => {
-                return Err(ExecuteError::VolumeBindError { err });
-            },
-        });
+        binds.push(VolumeBind::new_readwrite(src_path, ref_path).map_err(|source| ExecuteError::VolumeBindError { source })?);
     }
 
     // Done, return the binds
@@ -913,53 +886,39 @@ pub async fn get_digest(path: impl AsRef<Path>) -> Result<String, Error> {
     let path: &Path = path.as_ref();
 
     // Try to open the given file
-    let handle: TFile = match TFile::open(path).await {
-        Ok(handle) => handle,
-        Err(err) => {
-            return Err(Error::ImageTarOpenError { path: path.to_path_buf(), err });
-        },
-    };
+    let handle: TFile = TFile::open(path).await.map_err(|source| Error::ImageTarOpenError { path: path.to_path_buf(), source })?;
 
     // Wrap it as an Archive
     let mut archive: Archive<TFile> = Archive::new(handle);
 
     // Go through the entries
-    let mut entries = match archive.entries() {
-        Ok(handle) => handle,
-        Err(err) => {
-            return Err(Error::ImageTarEntriesError { path: path.to_path_buf(), err });
-        },
-    };
+    let mut entries = archive.entries().map_err(|source| Error::ImageTarEntriesError { path: path.to_path_buf(), source })?;
     while let Some(entry) = entries.next().await {
         // Make sure the entry is legible
-        let mut entry = match entry {
-            Ok(entry) => entry,
-            Err(err) => {
-                return Err(Error::ImageTarEntryError { path: path.to_path_buf(), err });
-            },
-        };
+        let mut entry = entry.map_err(|source| Error::ImageTarEntryError { path: path.to_path_buf(), source })?;
 
         // Check if the entry is the manifest.json
         let entry_path = match entry.path() {
             Ok(path) => path.to_path_buf(),
-            Err(err) => {
-                return Err(Error::ImageTarIllegalPath { path: path.to_path_buf(), err });
+            Err(source) => {
+                return Err(Error::ImageTarIllegalPath { path: path.to_path_buf(), source });
             },
         };
         if entry_path == PathBuf::from("manifest.json") {
             // Try to read it
             let mut manifest: Vec<u8> = vec![];
-            if let Err(err) = entry.read_to_end(&mut manifest).await {
-                return Err(Error::ImageTarManifestReadError { path: path.to_path_buf(), entry: entry_path, err });
-            };
+            entry.read_to_end(&mut manifest).await.map_err(|source| Error::ImageTarManifestReadError {
+                path: path.to_path_buf(),
+                entry: entry_path.clone(),
+                source,
+            })?;
 
             // Try to parse it with serde
-            let mut manifest: Vec<DockerImageManifest> = match serde_json::from_slice(&manifest) {
-                Ok(manifest) => manifest,
-                Err(err) => {
-                    return Err(Error::ImageTarManifestParseError { path: path.to_path_buf(), entry: entry_path, err });
-                },
-            };
+            let mut manifest: Vec<DockerImageManifest> = serde_json::from_slice(&manifest).map_err(|source| Error::ImageTarManifestParseError {
+                path: path.to_path_buf(),
+                entry: entry_path.clone(),
+                source,
+            })?;
 
             // Get the first and only entry from the vector
             let manifest: DockerImageManifest = if manifest.len() == 1 {
@@ -1006,24 +965,15 @@ pub async fn hash_container(container_path: impl AsRef<Path>) -> Result<String, 
     debug!("Hashing image file '{}'...", container_path.display());
 
     // Attempt to open the file
-    let mut handle: tfs::File = match tfs::File::open(container_path).await {
-        Ok(handle) => handle,
-        Err(err) => {
-            return Err(Error::ImageTarOpenError { path: container_path.into(), err });
-        },
-    };
+    let mut handle: tfs::File =
+        tfs::File::open(container_path).await.map_err(|source| Error::ImageTarOpenError { path: container_path.into(), source })?;
 
     // Read through it in chunks
     let mut hasher: Sha256 = Sha256::new();
     let mut buf: [u8; 1024 * 16] = [0; 1024 * 16];
     loop {
         // Read the next chunk
-        let n_bytes: usize = match handle.read(&mut buf).await {
-            Ok(n_bytes) => n_bytes,
-            Err(err) => {
-                return Err(Error::ImageTarReadError { path: container_path.into(), err });
-            },
-        };
+        let n_bytes: usize = handle.read(&mut buf).await.map_err(|source| Error::ImageTarReadError { path: container_path.into(), source })?;
         // Stop if we read nothing
         if n_bytes == 0 {
             break;
@@ -1061,8 +1011,8 @@ pub async fn ensure_image(docker: &Docker, image: impl Into<Image>, source: impl
         Err(bollard::errors::Error::DockerResponseServerError { status_code: 404, message: _ }) => {
             debug!("Image '{}' doesn't exist in Docker daemon.", image.docker());
         },
-        Err(err) => {
-            return Err(Error::ImageInspectError { image: Box::new(image), err });
+        Err(source) => {
+            return Err(Error::ImageInspectError { image: Box::new(image), source });
         },
     }
 
@@ -1099,8 +1049,8 @@ pub async fn save_image(docker: &Docker, image: impl Into<Image>, target: impl A
     // Open the output file
     let mut handle: tio::BufWriter<tfs::File> = match tfs::File::create(target).await {
         Ok(handle) => tio::BufWriter::new(handle),
-        Err(err) => {
-            return Err(Error::ImageFileCreateError { path: target.into(), err });
+        Err(source) => {
+            return Err(Error::ImageFileCreateError { path: target.into(), source });
         },
     };
 
@@ -1116,30 +1066,19 @@ pub async fn save_image(docker: &Docker, image: impl Into<Image>, target: impl A
     let mut stream = docker.export_image(&name);
     while let Some(chunk) = stream.next().await {
         // Unwrap the chunk
-        let chunk = match chunk {
-            Ok(chunk) => chunk,
-            Err(err) => {
-                return Err(Error::ImageExportError { name, err });
-            },
-        };
+        let chunk = chunk.map_err(|source| Error::ImageExportError { name: name.clone(), source })?;
         debug!("Next chunk: {} bytes", chunk.len());
 
         // Write it to the file
-        if let Err(err) = handle.write(&chunk).await {
-            return Err(Error::ImageFileWriteError { path: target.into(), err });
-        }
+        handle.write(&chunk).await.map_err(|source| Error::ImageFileWriteError { path: target.into(), source })?;
         debug!("Write OK");
         total += chunk.len();
     }
     println!("Total downloaded size: {total} bytes");
 
     // Finish the stream & the handle
-    if let Err(err) = handle.flush().await {
-        return Err(Error::ImageFileShutdownError { path: target.into(), err });
-    }
-    if let Err(err) = handle.shutdown().await {
-        return Err(Error::ImageFileShutdownError { path: target.into(), err });
-    }
+    handle.flush().await.map_err(|source| Error::ImageFileShutdownError { path: target.into(), source })?;
+    handle.shutdown().await.map_err(|source| Error::ImageFileShutdownError { path: target.into(), source })?;
 
     // Done
     Ok(())
@@ -1242,12 +1181,8 @@ pub async fn get_container_address(opts: impl AsRef<DockerOptions>, name: impl A
     let docker: Docker = connect_local(opts)?;
 
     // Try to inspect the container in question
-    let container = match docker.inspect_container(name.as_ref(), None).await {
-        Ok(data) => data,
-        Err(reason) => {
-            return Err(Error::InspectContainerError { name: name.into(), err: reason });
-        },
-    };
+    let container =
+        docker.inspect_container(name.as_ref(), None).await.map_err(|source| Error::InspectContainerError { name: name.into(), source })?;
 
     // Get the networks of this container
     let networks: HashMap<String, EndpointSettings> = container.network_settings.and_then(|n| n.networks).unwrap_or_default();
@@ -1289,6 +1224,6 @@ pub async fn remove_image(opts: impl AsRef<DockerOptions>, image: &Image) -> Res
     let info = info.unwrap();
     match docker.remove_image(info.id.as_ref().unwrap(), remove_options, None).await {
         Ok(_) => Ok(()),
-        Err(reason) => Err(Error::ImageRemoveError { image: Box::new(image.clone()), id: info.id.clone().unwrap(), err: reason }),
+        Err(source) => Err(Error::ImageRemoveError { image: Box::new(image.clone()), id: info.id.clone().unwrap(), source }),
     }
 }

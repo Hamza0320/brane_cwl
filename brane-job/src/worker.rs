@@ -123,9 +123,7 @@ async fn update_client(tx: &Sender<Result<ExecuteReply, Status>>, status: JobSta
 
     // Send it over the wire
     debug!("Updating client on '{:?}'...", status);
-    if let Err(err) = tx.send(Ok(reply)).await {
-        return Err(ExecuteError::ClientUpdateError { status, err });
-    }
+    tx.send(Ok(reply)).await.map_err(|source| ExecuteError::ClientUpdateError { status, source })?;
 
     // Done
     Ok(())
@@ -354,16 +352,12 @@ async fn preprocess_transfer_tar_local(
     debug!("Preprocessing by executing a data transfer");
     debug!("Downloading '{location}' from '{dataname}' to local machine");
 
-
-
     // Resolve the address from the API, if not in the cache
     debug!("Resolving location ID '{location}' to registry...");
-    let address: Address = match prof.time_fut("location resolution", location_cache.get(&location)).await {
-        Ok(addr) => addr,
-        Err(err) => return Err(PreprocessError::LocationResolve { id: location, err }),
-    };
-
-
+    let address: Address = prof
+        .time_fut("location resolution", location_cache.get(&location))
+        .await
+        .map_err(|source| PreprocessError::LocationResolve { id: location.clone(), source })?;
 
     // Prepare the folder where we will download the data to
     debug!("Preparing filesystem...");
@@ -373,9 +367,11 @@ async fn preprocess_transfer_tar_local(
         if tar_path.exists() {
             return Err(PreprocessError::DirNotADirError { what: "temporary tarball", path: tar_path });
         }
-        if let Err(err) = tfs::create_dir_all(&tar_path).await {
-            return Err(PreprocessError::DirCreateError { what: "temporary tarball", path: tar_path, err });
-        }
+        tfs::create_dir_all(&tar_path).await.map_err(|source| PreprocessError::DirCreateError {
+            what: "temporary tarball",
+            path: tar_path.clone(),
+            source,
+        })?;
     }
 
     // Make sure the data folder is there
@@ -401,11 +397,13 @@ async fn preprocess_transfer_tar_local(
             let data_path: PathBuf = temp_data_path.join(name);
             if data_path.exists() {
                 if !data_path.is_dir() {
-                    return Err(PreprocessError::DirNotADirError { what: "temporary data", path: data_path });
+                    return Err(PreprocessError::DirNotADirError { what: "temporary data", path: data_path.clone() });
                 }
-                if let Err(err) = tfs::remove_dir_all(&data_path).await {
-                    return Err(PreprocessError::DirRemoveError { what: "temporary data", path: data_path, err });
-                }
+                tfs::remove_dir_all(&data_path).await.map_err(|source| PreprocessError::DirRemoveError {
+                    what: "temporary data",
+                    path: data_path.clone(),
+                    source,
+                })?;
             }
 
             // Add the name of the file as the final result path
@@ -419,9 +417,11 @@ async fn preprocess_transfer_tar_local(
                 if !res_path.is_dir() {
                     return Err(PreprocessError::DirNotADirError { what: "temporary result", path: res_path });
                 }
-                if let Err(err) = tfs::remove_dir_all(&res_path).await {
-                    return Err(PreprocessError::DirRemoveError { what: "temporary result", path: res_path, err });
-                }
+                tfs::remove_dir_all(&res_path).await.map_err(|source| PreprocessError::DirRemoveError {
+                    what: "temporary result",
+                    path: res_path.clone(),
+                    source,
+                })?;
             }
 
             // Add the name of the file as the final result path
@@ -436,26 +436,18 @@ async fn preprocess_transfer_tar_local(
     debug!("Sending download request...");
     let download = prof.time("Downloading");
     let url: String = format!("{}/{}/download/{}", address, if dataname.is_data() { "data" } else { "results" }, dataname.name());
-    let res = match proxy
+    let res = proxy
         .get_with_body(&url, Some(NewPathRequestTlsOptions { location: location.clone(), use_client_auth: true }), &DownloadAssetRequest {
             use_case: use_case.into(),
             workflow: serde_json::to_value(&workflow).unwrap(),
             task:     pc.map(|pc| (if let FunctionId::Func(id) = pc.func_id { Some(id as u64) } else { None }, pc.edge_idx as u64)),
         })
         .await
-    {
-        Ok(result) => match result {
-            Ok(res) => res,
-            Err(err) => {
-                return Err(PreprocessError::DownloadRequestError { address: url, err });
-            },
-        },
-        Err(err) => {
-            return Err(PreprocessError::ProxyError { err: Box::new(err) });
-        },
-    };
+        .map_err(|source| PreprocessError::ProxyError { source: Box::new(source) })?
+        .map_err(|source| PreprocessError::DownloadRequestError { address: url.clone(), source })?;
+
     if !res.status().is_success() {
-        return Err(PreprocessError::DownloadRequestFailure { address: url, code: res.status(), message: res.text().await.ok() });
+        return Err(PreprocessError::DownloadRequestFailure { address: url.clone(), code: res.status(), message: res.text().await.ok() });
     }
 
 
@@ -463,26 +455,15 @@ async fn preprocess_transfer_tar_local(
     // With the request success, download it in parts
     debug!("Downloading file to '{}'...", tar_path.display());
     {
-        let mut handle: tfs::File = match tfs::File::create(&tar_path).await {
-            Ok(handle) => handle,
-            Err(err) => {
-                return Err(PreprocessError::TarCreateError { path: tar_path, err });
-            },
-        };
+        let mut handle: tfs::File =
+            tfs::File::create(&tar_path).await.map_err(|source| PreprocessError::TarCreateError { path: tar_path.clone(), source })?;
         let mut stream = res.bytes_stream();
         while let Some(chunk) = stream.next().await {
             // Unwrap the chunk
-            let mut chunk: Bytes = match chunk {
-                Ok(chunk) => chunk,
-                Err(err) => {
-                    return Err(PreprocessError::DownloadStreamError { address: url, err });
-                },
-            };
+            let mut chunk: Bytes = chunk.map_err(|source| PreprocessError::DownloadStreamError { address: url.clone(), source })?;
 
             // Write it to the file
-            if let Err(err) = handle.write_all_buf(&mut chunk).await {
-                return Err(PreprocessError::TarWriteError { path: tar_path, err });
-            }
+            handle.write_all_buf(&mut chunk).await.map_err(|source| PreprocessError::TarWriteError { path: tar_path.clone(), source })?;
         }
     }
     download.stop();
@@ -491,9 +472,7 @@ async fn preprocess_transfer_tar_local(
 
     // It took a while, but we now have the tar file; extract it
     debug!("Unpacking '{}' to '{}'...", tar_path.display(), data_path.display());
-    if let Err(err) = prof.time_fut("unarchiving", unarchive_async(tar_path, &data_path)).await {
-        return Err(PreprocessError::DataExtractError { err });
-    }
+    prof.time_fut("unarchiving", unarchive_async(tar_path, &data_path)).await.map_err(|source| PreprocessError::DataExtractError { source })?;
 
 
 
@@ -558,12 +537,8 @@ pub async fn preprocess_transfer_tar(
     debug!("Preprocessing tar...");
 
     // Load the local backend file
-    let backend: BackendFile = match BackendFile::from_path_async(&worker_cfg.paths.backend).await {
-        Ok(backend) => backend,
-        Err(err) => {
-            return Err(PreprocessError::BackendFileError { err });
-        },
-    };
+    let backend: BackendFile =
+        BackendFile::from_path_async(&worker_cfg.paths.backend).await.map_err(|source| PreprocessError::BackendFileError { source })?;
 
     // Now match the credential type
     match backend.method {
@@ -618,50 +593,36 @@ async fn assert_task_permission(
     let body: PolicyExecuteRequest = PolicyExecuteRequest { use_case: use_case.into(), workflow: workflow.clone(), task_id: call };
 
     // Next, generate a JWT to inject in the request
-    let jwt: String = match specifications::policy::generate_policy_token(
+    let jwt: String = specifications::policy::generate_policy_token(
         if let Some(user) = &*workflow.user { user.as_str() } else { "UNKNOWN" },
         &worker_cfg.name,
         Duration::from_secs(60),
         &worker_cfg.paths.policy_deliberation_secret,
-    ) {
-        Ok(token) => token,
-        Err(err) => return Err(AuthorizeError::TokenGenerate { secret: worker_cfg.paths.policy_deliberation_secret.clone(), err }),
-    };
+    )
+    .map_err(|source| AuthorizeError::TokenGenerate { secret: worker_cfg.paths.policy_deliberation_secret.clone(), source })?;
 
     // Prepare the request to send
-    let client: reqwest::Client = match reqwest::Client::builder().build() {
-        Ok(client) => client,
-        Err(err) => return Err(AuthorizeError::ClientBuild { err }),
-    };
+    let client: reqwest::Client = reqwest::Client::builder().build().map_err(|source| AuthorizeError::ClientBuild { source })?;
     let addr: String = format!("{}/{}", worker_cfg.services.chk.address, DELIBERATION_API_EXECUTE_TASK.1);
-    let req: reqwest::Request =
-        match client.request(DELIBERATION_API_EXECUTE_TASK.0, &addr).header(header::AUTHORIZATION, format!("Bearer {jwt}")).json(&body).build() {
-            Ok(req) => req,
-            Err(err) => return Err(AuthorizeError::ExecuteRequestBuild { addr, err }),
-        };
+    let req: reqwest::Request = client
+        .request(DELIBERATION_API_EXECUTE_TASK.0, &addr)
+        .header(header::AUTHORIZATION, format!("Bearer {jwt}"))
+        .json(&body)
+        .build()
+        .map_err(|source| AuthorizeError::ExecuteRequestBuild { addr: addr.clone(), source })?;
 
     // Send it
     debug!("Sending request to '{addr}'...");
-    let res: reqwest::Response = match client.execute(req).await {
-        Ok(res) => res,
-        Err(err) => {
-            return Err(AuthorizeError::ExecuteRequestSend { addr, err });
-        },
-    };
+    let res: reqwest::Response = client.execute(req).await.map_err(|source| AuthorizeError::ExecuteRequestSend { addr: addr.clone(), source })?;
 
     // Match on the status code to find if it's OK
     debug!("Waiting for checker response...");
     if !res.status().is_success() {
-        return Err(AuthorizeError::ExecuteRequestFailure { addr, code: res.status(), err: res.text().await.ok() });
+        return Err(AuthorizeError::ExecuteRequestFailure { addr: addr.clone(), code: res.status(), err: res.text().await.ok() });
     }
-    let res: String = match res.text().await {
-        Ok(res) => res,
-        Err(err) => return Err(AuthorizeError::ExecuteBodyDownload { addr, err }),
-    };
-    let res: Verdict = match serde_json::from_str(&res) {
-        Ok(res) => res,
-        Err(err) => return Err(AuthorizeError::ExecuteBodyDeserialize { addr, raw: res, err }),
-    };
+    let res: String = res.text().await.map_err(|source| AuthorizeError::ExecuteBodyDownload { addr: addr.clone(), source })?;
+    let res: Verdict =
+        serde_json::from_str(&res).map_err(|source| AuthorizeError::ExecuteBodyDeserialize { addr: addr.clone(), raw: res, source })?;
 
     // Now match the checker's response
     match res {
@@ -765,72 +726,59 @@ async fn check_workflow_or_task(node_config_path: &Path, request: CheckRequest) 
     };
 
     // Next, generate a JWT to inject in the request
-    let jwt: String = match specifications::policy::generate_policy_token(
+    let jwt: String = specifications::policy::generate_policy_token(
         if let Some(user) = &*workflow.user { user.as_str() } else { "UNKNOWN" },
         &worker_cfg.name,
         Duration::from_secs(60),
         &worker_cfg.paths.policy_deliberation_secret,
-    ) {
-        Ok(token) => token,
-        Err(err) => {
-            let err = AuthorizeError::TokenGenerate { secret: worker_cfg.paths.policy_deliberation_secret.clone(), err };
-            error!("{}", err.trace());
-            return Err(Status::internal("An internal error occurred"));
-        },
-    };
+    )
+    .map_err(|source| {
+        let err = AuthorizeError::TokenGenerate { secret: worker_cfg.paths.policy_deliberation_secret.clone(), source };
+        error!("{}", err.trace());
+        Status::internal("An internal error occurred")
+    })?;
 
     // Prepare the request to send
-    let client: reqwest::Client = match reqwest::Client::builder().build() {
-        Ok(client) => client,
-        Err(err) => {
-            let err = AuthorizeError::ClientBuild { err };
+    let client: reqwest::Client = reqwest::Client::builder().build().map_err(|source| {
+        let err = AuthorizeError::ClientBuild { source };
+        error!("{}", err.trace());
+        Status::internal("An internal error occurred")
+    })?;
+    let req: reqwest::Request =
+        client.request(method, &url).header(header::AUTHORIZATION, format!("Bearer {jwt}")).body(body).build().map_err(|source| {
+            let err = AuthorizeError::ExecuteRequestBuild { addr: url.clone(), source };
             error!("{}", err.trace());
-            return Err(Status::internal("An internal error occurred"));
-        },
-    };
-    let req: reqwest::Request = match client.request(method, &url).header(header::AUTHORIZATION, format!("Bearer {jwt}")).body(body).build() {
-        Ok(req) => req,
-        Err(err) => {
-            let err = AuthorizeError::ExecuteRequestBuild { addr: url, err };
-            error!("{}", err.trace());
-            return Err(Status::internal("An internal error occurred"));
-        },
-    };
+            Status::internal("An internal error occurred")
+        })?;
 
     // Send it
     debug!("Sending request to '{url}'...");
-    let res: reqwest::Response = match client.execute(req).await {
-        Ok(res) => res,
-        Err(err) => {
-            let err = AuthorizeError::ExecuteRequestSend { addr: url, err };
-            error!("{}", err.trace());
-            return Err(Status::internal("An internal error occurred"));
-        },
-    };
+    let res: reqwest::Response = client.execute(req).await.map_err(|source| {
+        let err = AuthorizeError::ExecuteRequestSend { addr: url.clone(), source };
+        error!("{}", err.trace());
+        Status::internal("An internal error occurred")
+    })?;
 
     // Match on the status code to find if it's OK
     debug!("Waiting for checker response...");
     if !res.status().is_success() {
-        let err = AuthorizeError::ExecuteRequestFailure { addr: url, code: res.status(), err: res.text().await.ok() };
+        let err = AuthorizeError::ExecuteRequestFailure { addr: url.clone(), code: res.status(), err: res.text().await.ok() };
         error!("{}", err.trace());
         return Err(Status::internal("An internal error occurred"));
     }
-    let res: String = match res.text().await {
-        Ok(res) => res,
-        Err(err) => {
-            let err = AuthorizeError::ExecuteBodyDownload { addr: url, err };
-            error!("{}", err.trace());
-            return Err(Status::internal("An internal error occurred"));
-        },
-    };
-    let res: Verdict = match serde_json::from_str(&res) {
-        Ok(res) => res,
-        Err(err) => {
-            let err = AuthorizeError::ExecuteBodyDeserialize { addr: url, raw: res, err };
-            error!("{}", err.trace());
-            return Err(Status::internal("An internal error occurred"));
-        },
-    };
+
+    let res: String = res.text().await.map_err(|source| {
+        let err = AuthorizeError::ExecuteBodyDownload { addr: url.clone(), source };
+        error!("{}", err.trace());
+        Status::internal("An internal error occurred")
+    })?;
+
+    let res: Verdict = serde_json::from_str(&res).map_err(|source| {
+        let err = AuthorizeError::ExecuteBodyDeserialize { addr: url.clone(), raw: res, source };
+        error!("{}", err.trace());
+        Status::internal("An internal error occurred")
+    })?;
+
     send.stop();
 
     // Now match the checker's response
@@ -893,17 +841,12 @@ async fn get_container(
     // Send a GET-request to the correct location
     let address: String = format!("{}/packages/{}/{}", endpoint, image.name, image.version.as_ref().unwrap_or(&"latest".into()));
     debug!("Performing request to '{}'...", address);
-    let res = match proxy.get(&address, None).await {
-        Ok(result) => match result {
-            Ok(res) => res,
-            Err(err) => {
-                return Err(ExecuteError::DownloadRequestError { address, err });
-            },
-        },
-        Err(err) => {
-            return Err(ExecuteError::ProxyError { err: Box::new(err) });
-        },
-    };
+    let res = proxy
+        .get(&address, None)
+        .await
+        .map_err(|source| ExecuteError::ProxyError { source: Box::new(source) })?
+        .map_err(|source| ExecuteError::DownloadRequestError { address: address.clone(), source })?;
+
     if !res.status().is_success() {
         return Err(ExecuteError::DownloadRequestFailure { address, code: res.status(), message: res.text().await.ok() });
     }
@@ -912,26 +855,15 @@ async fn get_container(
     let image_path: PathBuf = worker_cfg.paths.packages.join(format!("{}-{}.tar", image.name, image.version.as_ref().unwrap_or(&"latest".into())));
     debug!("Writing request stream to '{}'...", image_path.display());
     {
-        let mut handle: tfs::File = match tfs::File::create(&image_path).await {
-            Ok(handle) => handle,
-            Err(err) => {
-                return Err(ExecuteError::ImageCreateError { path: image_path, err });
-            },
-        };
+        let mut handle: tfs::File =
+            tfs::File::create(&image_path).await.map_err(|source| ExecuteError::ImageCreateError { path: image_path.clone(), source })?;
         let mut stream = res.bytes_stream();
         while let Some(chunk) = stream.next().await {
             // Unwrap the chunk
-            let mut chunk: Bytes = match chunk {
-                Ok(chunk) => chunk,
-                Err(err) => {
-                    return Err(ExecuteError::DownloadStreamError { address, err });
-                },
-            };
+            let mut chunk: Bytes = chunk.map_err(|source| ExecuteError::DownloadStreamError { address: address.clone(), source })?;
 
             // Write it to the file
-            if let Err(err) = handle.write_all_buf(&mut chunk).await {
-                return Err(ExecuteError::ImageWriteError { path: image_path, err });
-            }
+            handle.write_all_buf(&mut chunk).await.map_err(|source| ExecuteError::ImageWriteError { path: image_path.clone(), source })?;
         }
     }
 
@@ -967,12 +899,8 @@ async fn get_container_ids(
 
     // Open the backend file
     let disk = prof.time("File loading");
-    let backend: BackendFile = match BackendFile::from_path(&worker_cfg.paths.backend) {
-        Ok(backend) => backend,
-        Err(err) => {
-            return Err(ExecuteError::BackendFileError { path: worker_cfg.paths.backend.clone(), err });
-        },
-    };
+    let backend: BackendFile = BackendFile::from_path(&worker_cfg.paths.backend)
+        .map_err(|source| ExecuteError::BackendFileError { path: worker_cfg.paths.backend.clone(), source })?;
     disk.stop();
 
     // Get the directory of the image
@@ -986,26 +914,14 @@ async fn get_container_ids(
         if cache_file.exists() {
             // Attempt to read it
             let _cache = prof.time("ID cache file reading");
-            match tfs::read_to_string(&cache_file).await {
-                Ok(id) => id,
-                Err(err) => {
-                    return Err(ExecuteError::IdReadError { path: cache_file, err });
-                },
-            }
+            tfs::read_to_string(&cache_file).await.map_err(|source| ExecuteError::IdReadError { path: cache_file, source })?
         } else {
             // Get the ID from the image
             let _ext = prof.time("ID extraction");
-            let id: String = match docker::get_digest(image_path).await {
-                Ok(id) => id,
-                Err(err) => {
-                    return Err(ExecuteError::DigestError { path: image_path.into(), err });
-                },
-            };
+            let id: String = docker::get_digest(image_path).await.map_err(|source| ExecuteError::DigestError { path: image_path.into(), source })?;
 
             // Write it to the cache file
-            if let Err(err) = tfs::write(&cache_file, &id).await {
-                return Err(ExecuteError::IdWriteError { path: cache_file, err });
-            }
+            tfs::write(&cache_file, &id).await.map_err(|source| ExecuteError::IdWriteError { path: cache_file, source })?;
 
             // Return the ID
             id
@@ -1019,26 +935,14 @@ async fn get_container_ids(
         if cache_file.exists() {
             // Attempt to read it
             let _cache = prof.time("Hash cache file reading");
-            match tfs::read_to_string(&cache_file).await {
-                Ok(hash) => Some(hash),
-                Err(err) => {
-                    return Err(ExecuteError::HashReadError { path: cache_file, err });
-                },
-            }
+            Some(tfs::read_to_string(&cache_file).await.map_err(|source| ExecuteError::HashReadError { path: cache_file, source })?)
         } else {
             // Compute the hash
             let _ext = prof.time("Hash computation");
-            let hash: String = match docker::hash_container(image_path).await {
-                Ok(hash) => hash,
-                Err(err) => {
-                    return Err(ExecuteError::HashError { err });
-                },
-            };
+            let hash: String = docker::hash_container(image_path).await.map_err(|source| ExecuteError::HashError { source })?;
 
             // Write it to the cache file
-            if let Err(err) = tfs::write(&cache_file, &hash).await {
-                return Err(ExecuteError::HashWriteError { path: cache_file, err });
-            }
+            tfs::write(&cache_file, &hash).await.map_err(|source| ExecuteError::HashWriteError { path: cache_file, source })?;
 
             // Return the hash
             Some(hash)
@@ -1389,12 +1293,12 @@ async fn execute_task(
     let index: PackageIndex = match proxy.get_package_index(&format!("{}/graphql", cinfo.api_endpoint)).await {
         Ok(result) => match result {
             Ok(index) => index,
-            Err(err) => {
-                return err!(tx, ExecuteError::PackageIndexError { endpoint: cinfo.api_endpoint.clone(), err });
+            Err(source) => {
+                return err!(tx, ExecuteError::PackageIndexError { endpoint: cinfo.api_endpoint.clone(), source });
             },
         },
-        Err(err) => {
-            return err!(tx, ExecuteError::ProxyError { err: Box::new(err) });
+        Err(source) => {
+            return err!(tx, ExecuteError::ProxyError { source: Box::new(source) });
         },
     };
 
@@ -1415,8 +1319,8 @@ async fn execute_task(
     let disk = prof.time("File loading");
     let creds: BackendFile = match BackendFile::from_path(&worker_cfg.paths.backend) {
         Ok(creds) => creds,
-        Err(err) => {
-            return err!(tx, ExecuteError::BackendFileError { path: worker_cfg.paths.backend.clone(), err });
+        Err(err_source) => {
+            return err!(tx, ExecuteError::BackendFileError { path: worker_cfg.paths.backend.clone(), source: err_source });
         },
     };
     disk.stop();
@@ -1452,10 +1356,10 @@ async fn execute_task(
                 return Err(ExecuteError::AuthorizationFailure { checker: worker_cfg.services.reg.address.clone() });
             },
 
-            Err(err) => {
+            Err(err_source) => {
                 return err!(tx, JobStatus::AuthorizationFailed, ExecuteError::AuthorizationError {
                     checker: worker_cfg.services.reg.address.clone(),
-                    err
+                    source:  err_source,
                 });
             },
         }
@@ -1575,12 +1479,8 @@ async fn commit_result(
         let _reg = prof.time("Local registry scan");
 
         // Get the entries in the dataset directory
-        let mut entries: tfs::ReadDir = match tfs::read_dir(data_path).await {
-            Ok(entries) => entries,
-            Err(err) => {
-                return Err(CommitError::DirReadError { path: data_path.into(), err });
-            },
-        };
+        let mut entries: tfs::ReadDir =
+            tfs::read_dir(data_path).await.map_err(|source| CommitError::DirReadError { path: data_path.into(), source })?;
 
         // Iterate through them
         let mut found_info: Option<AssetInfo> = None;
@@ -1588,14 +1488,9 @@ async fn commit_result(
         #[allow(irrefutable_let_patterns)]
         while let entry = entries.next_entry().await {
             // Unwrap it
-            let entry: tfs::DirEntry = match entry {
-                Ok(Some(entry)) => entry,
-                Ok(None) => {
-                    break;
-                },
-                Err(err) => {
-                    return Err(CommitError::DirEntryReadError { path: data_path.into(), i, err });
-                },
+            let entry: tfs::DirEntry = match entry.map_err(|source| CommitError::DirEntryReadError { path: data_path.into(), i, source })? {
+                Some(entry) => entry,
+                None => break,
             };
 
             // Match on directory or not
@@ -1613,12 +1508,8 @@ async fn commit_result(
                 }
 
                 // Load it
-                let mut info: AssetInfo = match AssetInfo::from_path(&info_path) {
-                    Ok(info) => info,
-                    Err(err) => {
-                        return Err(CommitError::AssetInfoReadError { path: info_path, err });
-                    },
-                };
+                let mut info: AssetInfo =
+                    AssetInfo::from_path(&info_path).map_err(|source| CommitError::AssetInfoReadError { path: info_path, source })?;
 
                 // Canonicalize the assetinfo's path
                 match &mut info.access {
@@ -1657,13 +1548,9 @@ async fn commit_result(
             AccessKind::File { path: data_path } => {
                 // Remove the old directory first (or file)
                 if data_path.is_file() {
-                    if let Err(err) = tfs::remove_file(&data_path).await {
-                        return Err(CommitError::FileRemoveError { path: data_path.clone(), err });
-                    }
+                    tfs::remove_file(&data_path).await.map_err(|source| CommitError::FileRemoveError { path: data_path.clone(), source })?;
                 } else if data_path.is_dir() {
-                    if let Err(err) = tfs::remove_dir_all(&data_path).await {
-                        return Err(CommitError::DirRemoveError { path: data_path.clone(), err });
-                    }
+                    tfs::remove_dir_all(&data_path).await.map_err(|source| CommitError::DirRemoveError { path: data_path.clone(), source })?;
                 } else if data_path.exists() {
                     return Err(CommitError::PathNotFileNotDir { path: data_path.clone() });
                 } else {
@@ -1672,9 +1559,7 @@ async fn commit_result(
                 }
 
                 // Simply copy the one directory over the other and it's updated
-                if let Err(err) = copy_dir_recursively_async(results_path.join(name), data_path).await {
-                    return Err(CommitError::DataCopyError { err });
-                };
+                copy_dir_recursively_async(results_path.join(name), data_path).await.map_err(|source| CommitError::DataCopyError { source })?;
             },
         }
     } else {
@@ -1686,15 +1571,11 @@ async fn commit_result(
             if dir.exists() {
                 return Err(CommitError::DataDirNotADir { path: dir });
             }
-            if let Err(err) = tfs::create_dir_all(&dir).await {
-                return Err(CommitError::DataDirCreateError { path: dir, err });
-            }
+            tfs::create_dir_all(&dir).await.map_err(|source| CommitError::DataDirCreateError { path: dir.clone(), source })?;
         }
 
         // Copy the directory first, to not have the registry use it yet while copying
-        if let Err(err) = copy_dir_recursively_async(results_path.join(name), dir.join("data")).await {
-            return Err(CommitError::DataCopyError { err });
-        };
+        copy_dir_recursively_async(results_path.join(name), dir.join("data")).await.map_err(|source| CommitError::DataCopyError { source })?;
 
         // Create a new AssetInfo struct
         let info: AssetInfo = AssetInfo {
@@ -1708,21 +1589,10 @@ async fn commit_result(
 
         // Now write that
         let info_path: PathBuf = dir.join("data.yml");
-        let mut handle: tfs::File = match tfs::File::create(&info_path).await {
-            Ok(handle) => handle,
-            Err(err) => {
-                return Err(CommitError::DataInfoCreateError { path: info_path, err });
-            },
-        };
-        let sinfo: String = match serde_yaml::to_string(&info) {
-            Ok(sinfo) => sinfo,
-            Err(err) => {
-                return Err(CommitError::DataInfoSerializeError { err });
-            },
-        };
-        if let Err(err) = handle.write_all(sinfo.as_bytes()).await {
-            return Err(CommitError::DataInfoWriteError { path: info_path, err });
-        }
+        let mut handle: tfs::File =
+            tfs::File::create(&info_path).await.map_err(|source| CommitError::DataInfoCreateError { path: info_path.clone(), source })?;
+        let sinfo: String = serde_yaml::to_string(&info).map_err(|source| CommitError::DataInfoSerializeError { source })?;
+        handle.write_all(sinfo.as_bytes()).await.map_err(|source| CommitError::DataInfoWriteError { path: info_path.clone(), source })?;
     }
     copy.stop();
 
@@ -1934,25 +1804,15 @@ impl JobService for WorkerServer {
 
         // Serialize the accesskind and return the reply
         let ser = report.time("Serialization");
-        let saccess: String = match serde_json::to_string(&access) {
-            Ok(saccess) => saccess,
-            Err(err) => {
-                error!("{}", PreprocessError::AccessKindSerializeError { err });
-                return Err(Status::internal("An internal error occurred"));
-            },
-        };
+        let saccess: String = serde_json::to_string(&access).map_err(|source| {
+            error!("{}", PreprocessError::AccessKindSerializeError { source });
+            Status::internal("An internal error occurred")
+        })?;
         ser.stop();
 
         // Done
         debug!("File transfer complete.");
         Ok(Response::new(PreprocessReply { access: saccess }))
-        //     },
-
-        //     None => {
-        //         debug!("Incoming request has invalid preprocess kind (dropping it)");
-        //         Err(Status::invalid_argument("Unknown preprocesskind"))
-        //     },
-        // }
     }
 
     async fn execute(&self, request: Request<ExecuteRequest>) -> Result<Response<Self::ExecuteStream>, Status> {

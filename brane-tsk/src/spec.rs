@@ -46,7 +46,7 @@ macro_rules! return_status_val {
         if let Some(s) = $str {
             match serde_json::from_str(&s) {
                 Ok(val) => Ok(JobStatus::$status(val)),
-                Err(err) => Err(ExecuteError::StatusValueParseError { status: TaskStatus::$status, raw: s, err }),
+                Err(source) => Err(ExecuteError::StatusValueParseError { status: TaskStatus::$status, raw: s, source }),
             }
         } else {
             Err(ExecuteError::StatusEmptyStringError { status: TaskStatus::$status })
@@ -60,7 +60,7 @@ macro_rules! return_status_failed {
         if let Some(s) = $str {
             match serde_json::from_str::<(i32, String, String)>(&s) {
                 Ok((code, stdout, stderr)) => Ok(JobStatus::$status(code, stdout, stderr)),
-                Err(err) => Err(ExecuteError::StatusTripletParseError { status: TaskStatus::$status, raw: s, err }),
+                Err(source) => Err(ExecuteError::StatusTripletParseError { status: TaskStatus::$status, raw: s, source }),
             }
         } else {
             Err(ExecuteError::StatusEmptyStringError { status: TaskStatus::$status })
@@ -118,7 +118,7 @@ impl FromStr for AppId {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match Uuid::from_str(value) {
             Ok(uuid) => Ok(Self(uuid)),
-            Err(err) => Err(IdError::ParseError { what: "AppId", raw: value.into(), err }),
+            Err(source) => Err(IdError::ParseError { what: "AppId", raw: value.into(), source }),
         }
     }
 }
@@ -165,7 +165,7 @@ impl FromStr for TaskId {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match Uuid::from_str(value) {
             Ok(uuid) => Ok(Self(uuid)),
-            Err(err) => Err(IdError::ParseError { what: "TaskId", raw: value.into(), err }),
+            Err(source) => Err(IdError::ParseError { what: "TaskId", raw: value.into(), source }),
         }
     }
 }

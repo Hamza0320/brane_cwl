@@ -48,20 +48,11 @@ impl InstancePlanner {
         // Serialize the workflow
         debug!("Serializing request...");
         let ser = prof.time(format!("workflow {app_id}:{task_id} serialization"));
-        let vwf: Value = match serde_json::to_value(&workflow) {
-            Ok(vwf) => vwf,
-            Err(err) => {
-                return Err(PlanError::WorkflowSerialize { id: workflow.id, err });
-            },
-        };
+        let vwf: Value = serde_json::to_value(&workflow).map_err(|source| PlanError::WorkflowSerialize { id: workflow.id.clone(), source })?;
 
         // Create a serialized request with it
-        let sreq: String = match serde_json::to_string(&PlanningRequest { app_id: app_id.to_string(), workflow: vwf }) {
-            Ok(sreq) => sreq,
-            Err(err) => {
-                return Err(PlanError::PlanningRequestSerialize { id: workflow.id, err });
-            },
-        };
+        let sreq: String = serde_json::to_string(&PlanningRequest { app_id: app_id.to_string(), workflow: vwf })
+            .map_err(|source| PlanError::PlanningRequestSerialize { id: workflow.id.clone(), source })?;
         ser.stop();
 
         // Populate a "PlanningRequest" with that (i.e., just populate a future record with the string)
@@ -69,15 +60,14 @@ impl InstancePlanner {
         let remote = prof.time(format!("workflow '{task_id}' on brane-plr"));
         let url: String = format!("{plr}/plan");
         let client: Client = Client::new();
-        let req: Request = match client.post(&url).body(sreq).build() {
-            Ok(req) => req,
-            Err(err) => return Err(PlanError::PlanningRequest { id: workflow.id, url, err }),
-        };
+        let req: Request = client.post(&url).body(sreq).build().map_err(|source| PlanError::PlanningRequest {
+            id: workflow.id.clone(),
+            url: url.clone(),
+            source,
+        })?;
         // Send the message
-        let res: Response = match client.execute(req).await {
-            Ok(res) => res,
-            Err(err) => return Err(PlanError::PlanningRequestSend { id: workflow.id, url, err }),
-        };
+        let res: Response =
+            client.execute(req).await.map_err(|source| PlanError::PlanningRequestSend { id: workflow.id.clone(), url: url.clone(), source })?;
         let status: StatusCode = res.status();
         if status == StatusCode::UNAUTHORIZED {
             // Attempt to parse the response
@@ -95,25 +85,27 @@ impl InstancePlanner {
             // Return it
             return Err(PlanError::CheckerDenied { domain: res.domain, reasons: res.reasons });
         } else if !status.is_success() {
-            return Err(PlanError::PlanningFailure { id: workflow.id, url, code: status, response: res.text().await.ok() });
+            return Err(PlanError::PlanningFailure { id: workflow.id, url: url.clone(), code: status, response: res.text().await.ok() });
         }
         remote.stop();
 
         // Process the result
         debug!("Receiving response...");
         let post = prof.time(format!("workflow '{task_id}' response processing"));
-        let res: String = match res.text().await {
-            Ok(res) => res,
-            Err(err) => return Err(PlanError::PlanningResponseDownload { id: workflow.id, url, err }),
-        };
-        let res: PlanningReply = match serde_json::from_str(&res) {
-            Ok(res) => res,
-            Err(err) => return Err(PlanError::PlanningResponseParse { id: workflow.id, url, raw: res, err }),
-        };
-        let plan: Workflow = match serde_json::from_value(res.plan.clone()) {
-            Ok(res) => res,
-            Err(err) => return Err(PlanError::PlanningPlanParse { id: workflow.id, url, raw: res.plan, err }),
-        };
+        let res: String =
+            res.text().await.map_err(|source| PlanError::PlanningResponseDownload { id: workflow.id.clone(), url: url.clone(), source })?;
+        let res: PlanningReply = serde_json::from_str(&res).map_err(|source| PlanError::PlanningResponseParse {
+            id: workflow.id.clone(),
+            url: url.clone(),
+            raw: res,
+            source,
+        })?;
+        let plan: Workflow = serde_json::from_value(res.plan.clone()).map_err(|source| PlanError::PlanningPlanParse {
+            id: workflow.id.clone(),
+            url: url.clone(),
+            raw: res.plan,
+            source,
+        })?;
         post.stop();
 
         // Done

@@ -161,27 +161,17 @@ async fn plan_edges(
 
                 // Fetch the list of capabilities supported by the planned location
                 let address: String = format!("{api_addr}/infra/capabilities/{location}");
-                let res: reqwest::Response = match reqwest::get(&address).await {
-                    Ok(req) => req,
-                    Err(err) => {
-                        return Err(PlanError::RequestError { address, err });
-                    },
-                };
+                let res: reqwest::Response =
+                    reqwest::get(&address).await.map_err(|source| PlanError::RequestError { address: address.clone(), source })?;
                 if !res.status().is_success() {
                     return Err(PlanError::RequestFailure { address, code: res.status(), err: res.text().await.ok() });
                 }
-                let capabilities: String = match res.text().await {
-                    Ok(caps) => caps,
-                    Err(err) => {
-                        return Err(PlanError::RequestBodyError { address, err });
-                    },
-                };
-                let capabilities: HashSet<Capability> = match serde_json::from_str(&capabilities) {
-                    Ok(caps) => caps,
-                    Err(err) => {
-                        return Err(PlanError::RequestParseError { address, raw: capabilities, err });
-                    },
-                };
+                let capabilities: String = res.text().await.map_err(|source| PlanError::RequestBodyError { address: address.clone(), source })?;
+                let capabilities: HashSet<Capability> = serde_json::from_str(&capabilities).map_err(|source| PlanError::RequestParseError {
+                    address: address.clone(),
+                    raw: capabilities,
+                    source,
+                })?;
 
                 // Assert that this is what we need
                 if let TaskDef::Compute(ComputeTaskDef { function, requirements, .. }) = &table.tasks[*task] {
@@ -541,25 +531,18 @@ async fn validate_workflow_with(proxy: &ProxyClient, splan: &str, location: &str
     };
 
     // Create the client
-    let mut client: JobServiceClient = match proxy.connect_to_job(info.delegate.to_string()).await {
-        Ok(result) => match result {
-            Ok(client) => client,
-            Err(err) => {
-                return Err(PlanError::GrpcConnectError { endpoint: info.delegate.clone(), err });
-            },
-        },
-        Err(err) => {
-            return Err(PlanError::ProxyError { err: Box::new(err) });
-        },
-    };
+    let mut client: JobServiceClient = proxy
+        .connect_to_job(info.delegate.to_string())
+        .await
+        .map_err(|source| PlanError::ProxyError { source: Box::new(source) })?
+        .map_err(|source| PlanError::GrpcConnectError { endpoint: info.delegate.clone(), source })?;
 
     // Send the request to the job node
-    let response: tonic::Response<CheckReply> = match client.check_workflow(message).await {
-        Ok(response) => response,
-        Err(err) => {
-            return Err(PlanError::GrpcRequestError { what: "CheckRequest", endpoint: info.delegate.clone(), err });
-        },
-    };
+    let response: tonic::Response<CheckReply> = client.check_workflow(message).await.map_err(|source| PlanError::GrpcRequestError {
+        what: "CheckRequest",
+        endpoint: info.delegate.clone(),
+        source,
+    })?;
     let result: CheckReply = response.into_inner();
 
     // Examine if it was OK
@@ -572,10 +555,6 @@ async fn validate_workflow_with(proxy: &ProxyClient, splan: &str, location: &str
     debug!("Checker of '{location}' ALLOWS plan");
     Ok(())
 }
-
-
-
-
 
 /***** LIBRARY *****/
 /// This function hosts the actual planner, which uses an event monitor to receive plans which are then planned.

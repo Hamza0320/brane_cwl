@@ -156,31 +156,30 @@ pub async fn assert_asset_permission(
         Duration::from_secs(60),
         &worker_cfg.paths.policy_deliberation_secret,
     )
-    .map_err(|source| AuthorizeError::TokenGenerate { secret: worker_cfg.paths.policy_deliberation_secret.clone(), err: source })?;
+    .map_err(|source| AuthorizeError::TokenGenerate { secret: worker_cfg.paths.policy_deliberation_secret.clone(), source })?;
 
     // Prepare the request to send
-    let client: reqwest::Client = reqwest::Client::builder().build().map_err(|source| AuthorizeError::ClientBuild { err: source })?;
+    let client: reqwest::Client = reqwest::Client::builder().build().map_err(|source| AuthorizeError::ClientBuild { source })?;
     let addr: String = format!("{}/{}", worker_cfg.services.chk.address, DELIBERATION_API_TRANSFER_DATA.1);
     let req: reqwest::Request = client
         .request(DELIBERATION_API_TRANSFER_DATA.0, &addr)
         .header(header::AUTHORIZATION, format!("Bearer {jwt}"))
         .json(&body)
         .build()
-        .map_err(|source| AuthorizeError::ExecuteRequestBuild { addr: addr.clone(), err: source })?;
+        .map_err(|source| AuthorizeError::ExecuteRequestBuild { addr: addr.clone(), source })?;
 
     // Send it
     debug!("Sending request to '{addr}'...");
-    let res: reqwest::Response =
-        client.execute(req).await.map_err(|source| AuthorizeError::ExecuteRequestSend { addr: addr.clone(), err: source })?;
+    let res: reqwest::Response = client.execute(req).await.map_err(|source| AuthorizeError::ExecuteRequestSend { addr: addr.clone(), source })?;
 
     // Match on the status code to find if it's OK
     debug!("Waiting for checker response...");
     if !res.status().is_success() {
         return Err(AuthorizeError::ExecuteRequestFailure { addr, code: res.status(), err: res.text().await.ok() });
     }
-    let res: String = res.text().await.map_err(|source| AuthorizeError::ExecuteBodyDownload { addr: addr.clone(), err: source })?;
+    let res: String = res.text().await.map_err(|source| AuthorizeError::ExecuteBodyDownload { addr: addr.clone(), source })?;
     let res: Verdict =
-        serde_json::from_str(&res).map_err(|source| AuthorizeError::ExecuteBodyDeserialize { addr: addr.clone(), raw: res, err: source })?;
+        serde_json::from_str(&res).map_err(|source| AuthorizeError::ExecuteBodyDeserialize { addr: addr.clone(), raw: res, source })?;
 
     // Now match the checker's response
     match res {
