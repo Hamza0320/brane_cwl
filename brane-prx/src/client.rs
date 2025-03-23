@@ -52,36 +52,17 @@ async fn create_path(endpoint: &Url, remote: impl Into<String>, tls: &Option<New
     // Send it with reqwest
     let address: String = format!("{endpoint}outgoing/new");
     let client: Client = Client::new();
-    let req: Request = match client.post(&address).json(&request).build() {
-        Ok(req) => req,
-        Err(err) => {
-            return Err(Error::RequestBuildError { address, err });
-        },
-    };
+    let req: Request =
+        client.post(&address).json(&request).build().map_err(|source| Error::RequestBuildError { address: address.clone(), source })?;
     debug!("Sending request '{}'...", req.url());
-    let res: Response = match client.execute(req).await {
-        Ok(res) => res,
-        Err(err) => {
-            return Err(Error::RequestError { address, err });
-        },
-    };
+    let res: Response = client.execute(req).await.map_err(|source| Error::RequestError { address: address.clone(), source })?;
     if !res.status().is_success() {
         return Err(Error::RequestFailure { address, code: res.status(), err: res.text().await.ok() });
     }
 
     // Extract the port
-    let port: String = match res.text().await {
-        Ok(port) => port,
-        Err(err) => {
-            return Err(Error::RequestTextError { address, err });
-        },
-    };
-    let port: u16 = match u16::from_str(&port) {
-        Ok(port) => port,
-        Err(err) => {
-            return Err(Error::RequestPortParseError { address, raw: port, err });
-        },
-    };
+    let port: String = res.text().await.map_err(|source| Error::RequestTextError { address: address.clone(), source })?;
+    let port: u16 = u16::from_str(&port).map_err(|source| Error::RequestPortParseError { address: address.clone(), raw: port, source })?;
 
     // Done
     Ok(port)
@@ -144,12 +125,7 @@ impl ProxyClient {
         let client: Client = Client::new();
 
         // Create a new GET-request with that client
-        let request: Request = match client.get(address).build() {
-            Ok(request) => request,
-            Err(err) => {
-                return Err(Error::RequestBuildError { address: address.into(), err });
-            },
-        };
+        let request: Request = client.get(address).build().map_err(|source| Error::RequestBuildError { address: address.into(), source })?;
 
         // Pass it onto `ProxyClient::execute()`
         self.execute(client, request, tls).await
@@ -179,12 +155,8 @@ impl ProxyClient {
         let client: Client = Client::new();
 
         // Create a new GET-request with that client
-        let request: Request = match client.get(address).json(body).build() {
-            Ok(request) => request,
-            Err(err) => {
-                return Err(Error::RequestBuildError { address: address.into(), err });
-            },
-        };
+        let request: Request =
+            client.get(address).json(body).build().map_err(|source| Error::RequestBuildError { address: address.into(), source })?;
 
         // Pass it onto `ProxyClient::execute()`
         self.execute(client, request, tls).await
@@ -251,24 +223,22 @@ impl ProxyClient {
                 return Err(Error::UrlSchemeUpdateError { url: request.url().clone(), scheme: "http".into() });
             }
         }
-        if let Err(err) = request.url_mut().set_host(Some(self.endpoint.domain().unwrap())) {
-            return Err(Error::UrlHostUpdateError { url: request.url().clone(), host: self.endpoint.domain().unwrap().into(), err });
-        }
+        request.url_mut().set_host(Some(self.endpoint.domain().unwrap())).map_err(|source| Error::UrlHostUpdateError {
+            url: request.url().clone(),
+            host: self.endpoint.domain().unwrap().into(),
+            source,
+        })?;
         if request.url_mut().set_port(Some(port)).is_err() {
             return Err(Error::UrlPortUpdateError { url: request.url().clone(), port });
         }
 
         // We can now perform the request
         debug!("Performing request to '{}' (secretly '{}')...", url, request.url());
-        Ok(match client.execute(request).await {
-            Ok(res) => Ok(res),
-            Err(err) => {
-                // If it fails, remove the mapping so we are forced to ask a new one next time
-                let mut lock: RwLockWriteGuard<HashMap<(String, Option<NewPathRequestTlsOptions>), u16>> = self.paths.write().unwrap();
-                lock.remove(&(remote, tls));
-                Err(err)
-            },
-        })
+        Ok(client.execute(request).await.inspect_err(|_source| {
+            // If it fails, remove the mapping so we are forced to ask a new one next time
+            let mut lock: RwLockWriteGuard<HashMap<(String, Option<NewPathRequestTlsOptions>), u16>> = self.paths.write().unwrap();
+            lock.remove(&(remote, tls));
+        }))
     }
 
     /// Requests the package index from the `brane-api` service at the given endpoint.
@@ -285,12 +255,7 @@ impl ProxyClient {
         let address: &str = address.as_ref();
 
         // Parse the address as a URL
-        let mut address: Url = match Url::from_str(address) {
-            Ok(address) => address,
-            Err(err) => {
-                return Err(Error::IllegalUrl { raw: address.into(), err });
-            },
-        };
+        let mut address: Url = Url::from_str(address).map_err(|source| Error::IllegalUrl { raw: address.into(), source })?;
         // Assert it has the appropriate fields
         if address.domain().is_none() {
             panic!("URL {address} does not have a domain defined");
@@ -324,24 +289,23 @@ impl ProxyClient {
 
         // Inject the new target in the URL
         let original: Url = address.clone();
-        if let Err(err) = address.set_host(Some(self.endpoint.domain().unwrap())) {
-            return Err(Error::UrlHostUpdateError { url: address, host: self.endpoint.domain().unwrap().into(), err });
-        }
+        address.set_host(Some(self.endpoint.domain().unwrap())).map_err(|source| Error::UrlHostUpdateError {
+            url: address.clone(),
+            host: self.endpoint.domain().unwrap().into(),
+            source,
+        })?;
+
         if address.set_port(Some(port)).is_err() {
             return Err(Error::UrlPortUpdateError { url: address, port });
         }
 
         // Run the normal function
         debug!("Performing request to '{}' (secretly '{}')...", original, address);
-        Ok(match brane_tsk::api::get_package_index(address).await {
-            Ok(res) => Ok(res),
-            Err(err) => {
-                // If it fails, remove the mapping so we are forced to ask a new one next time
-                let mut lock: RwLockWriteGuard<HashMap<(String, Option<NewPathRequestTlsOptions>), u16>> = self.paths.write().unwrap();
-                lock.remove(&(remote, None));
-                Err(err)
-            },
-        })
+        Ok(brane_tsk::api::get_package_index(address).await.inspect_err(|_source| {
+            // If it fails, remove the mapping so we are forced to ask a new one next time
+            let mut lock: RwLockWriteGuard<HashMap<(String, Option<NewPathRequestTlsOptions>), u16>> = self.paths.write().unwrap();
+            lock.remove(&(remote, None));
+        }))
     }
 
     /// Connects to the given `brane-job` service using gRPC.
@@ -360,12 +324,8 @@ impl ProxyClient {
         let address: &str = address.as_ref();
 
         // Parse the address as a URL
-        let mut address: Url = match Url::from_str(address) {
-            Ok(address) => address,
-            Err(err) => {
-                return Err(Error::IllegalUrl { raw: address.into(), err });
-            },
-        };
+        let mut address: Url = Url::from_str(address).map_err(|source| Error::IllegalUrl { raw: address.into(), source })?;
+
         // Assert it has the appropriate fields
         if address.domain().is_none() {
             panic!("URL {address} does not have a domain defined");
@@ -399,23 +359,22 @@ impl ProxyClient {
 
         // Inject the new target in the URL
         let original: Url = address.clone();
-        if let Err(err) = address.set_host(Some(self.endpoint.domain().unwrap())) {
-            return Err(Error::UrlHostUpdateError { url: address, host: self.endpoint.domain().unwrap().into(), err });
-        }
+        address.set_host(Some(self.endpoint.domain().unwrap())).map_err(|source| Error::UrlHostUpdateError {
+            url: address.clone(),
+            host: self.endpoint.domain().unwrap().into(),
+            source,
+        })?;
+
         if address.set_port(Some(port)).is_err() {
             return Err(Error::UrlPortUpdateError { url: address, port });
         }
 
         // We can now perform the request
         debug!("Connecting to '{}' (secretly '{}')...", original, address);
-        Ok(match JobServiceClient::connect(address.to_string()).await {
-            Ok(res) => Ok(res),
-            Err(err) => {
-                // If it fails, remove the mapping so we are forced to ask a new one next time
-                let mut lock: RwLockWriteGuard<HashMap<(String, Option<NewPathRequestTlsOptions>), u16>> = self.paths.write().unwrap();
-                lock.remove(&(remote, None));
-                Err(err)
-            },
-        })
+        Ok(JobServiceClient::connect(address.to_string()).await.inspect_err(|_source| {
+            // If it fails, remove the mapping so we are forced to ask a new one next time
+            let mut lock: RwLockWriteGuard<HashMap<(String, Option<NewPathRequestTlsOptions>), u16>> = self.paths.write().unwrap();
+            lock.remove(&(remote, None));
+        }))
     }
 }

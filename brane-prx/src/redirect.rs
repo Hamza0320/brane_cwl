@@ -61,24 +61,21 @@ impl RemoteClient {
 
         use RemoteClient::*;
         match self {
-            Direct => match TcpStream::connect(address).await {
-                Ok(conn) => Ok(conn),
-                Err(err) => Err(Error::TcpStreamConnectError { address: address.into(), err }),
-            },
+            Direct => TcpStream::connect(address).await.map_err(|source| Error::TcpStreamConnectError { address: address.into(), source }),
 
             Socks5(client, proxy) => match client.connect(address.to_string()).await {
                 Ok((conn, addr)) => {
                     debug!("{:?}", addr);
                     Ok(conn)
                 },
-                Err(err) => Err(Error::Socks5ConnectError { address: address.into(), proxy: proxy.clone(), err }),
+                Err(source) => Err(Error::Socks5ConnectError { address: address.into(), proxy: proxy.clone(), source }),
             },
             Socks6(client, proxy) => match client.connect(address.to_string(), None, None).await {
                 Ok((conn, addr)) => {
                     debug!("{:?}", addr);
                     Ok(conn)
                 },
-                Err(err) => Err(Error::Socks6ConnectError { address: address.into(), proxy: proxy.clone(), err }),
+                Err(source) => Err(Error::Socks6ConnectError { address: address.into(), proxy: proxy.clone(), source }),
             },
         }
     }
@@ -109,18 +106,8 @@ pub async fn path_server_factory(
     tls: Option<NewPathRequestTlsOptions>,
 ) -> Result<impl Future<Output = Never>, Error> {
     // Parse the address to discover the hostname
-    let remote_addr: Url = match Url::from_str(&remote_addr) {
-        Ok(url) => url,
-        Err(err) => {
-            return Err(Error::IllegalUrl { raw: remote_addr, err });
-        },
-    };
-    let hostname: &str = match remote_addr.domain() {
-        Some(hostname) => hostname,
-        None => {
-            return Err(Error::NoDomainName { raw: remote_addr.to_string() });
-        },
-    };
+    let remote_addr: Url = Url::from_str(&remote_addr).map_err(|source| Error::IllegalUrl { raw: remote_addr, source })?;
+    let hostname: &str = remote_addr.domain().ok_or_else(|| Error::NoDomainName { raw: remote_addr.to_string() })?;
 
     // Parse the given domain as a hostname first, if required by TLS
     let tls: Option<(ServerName, NewPathRequestTlsOptions)> = if let Some(tls) = tls {
@@ -132,8 +119,8 @@ pub async fn path_server_factory(
                 }
                 Some((name, tls))
             },
-            Err(err) => {
-                return Err(Error::IllegalServerName { raw: hostname.into(), err });
+            Err(source) => {
+                return Err(Error::IllegalServerName { raw: hostname.into(), source });
             },
         }
     } else {
@@ -141,12 +128,7 @@ pub async fn path_server_factory(
     };
 
     // Attempt to open the TCP server
-    let listener: TcpListener = match TcpListener::bind(socket_addr).await {
-        Ok(listener) => listener,
-        Err(err) => {
-            return Err(Error::ListenerCreateError { address: socket_addr, err });
-        },
-    };
+    let listener: TcpListener = TcpListener::bind(socket_addr).await.map_err(|source| Error::ListenerCreateError { address: socket_addr, source })?;
 
     // Now match on what to do
     if let Some(proxy_cfg) = &context.proxy.forward {
@@ -156,8 +138,8 @@ pub async fn path_server_factory(
                 // Attempt to open the socks 5 client
                 match Socks5Client::new(proxy_cfg.address.to_string(), None).await {
                     Ok(client) => RemoteClient::Socks5(client, proxy_cfg.address.clone()),
-                    Err(err) => {
-                        return Err(Error::Socks5CreateError { address: proxy_cfg.address.clone(), err });
+                    Err(source) => {
+                        return Err(Error::Socks5CreateError { address: proxy_cfg.address.clone(), source });
                     },
                 }
             },
@@ -166,8 +148,8 @@ pub async fn path_server_factory(
                 // Attempt to open the socks 6 client
                 match Socks6Client::new(proxy_cfg.address.to_string(), None).await {
                     Ok(client) => RemoteClient::Socks6(client, proxy_cfg.address.clone()),
-                    Err(err) => {
-                        return Err(Error::Socks6CreateError { address: proxy_cfg.address.clone(), err });
+                    Err(source) => {
+                        return Err(Error::Socks6CreateError { address: proxy_cfg.address.clone(), source });
                     },
                 }
             },
