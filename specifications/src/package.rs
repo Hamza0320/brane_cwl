@@ -43,11 +43,13 @@ type Map<T> = std::collections::HashMap<String, T>;
 
 /***** ERRORS *****/
 /// Lists the errors that can occur for the [`PackageKind`] enum
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum PackageKindError {
     /// We tried to convert a string to a [`PackageKind`] but failed
+    #[error("'{}' is not a valid package type; possible types are {}", skind, Self::get_package_kinds())]
     IllegalKind { skind: String },
 }
+
 impl PackageKindError {
     /// Static helper that collects a list of possible package kinds.
     ///
@@ -64,113 +66,70 @@ impl PackageKindError {
         kinds
     }
 }
-impl std::fmt::Display for PackageKindError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PackageKindError::IllegalKind { skind } => {
-                write!(f, "'{}' is not a valid package type; possible types are {}", skind, Self::get_package_kinds())
-            },
-        }
-    }
-}
-impl std::error::Error for PackageKindError {}
 
 /// Lists the error for parsing a [`Capability`] from a string.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum CapabilityParseError {
     /// An unknown capability was given.
+    #[error("Unknown capability '{raw}'")]
     UnknownCapability { raw: String },
 }
-impl std::fmt::Display for CapabilityParseError {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use CapabilityParseError::*;
-        match self {
-            UnknownCapability { raw } => write!(f, "Unknown capability '{raw}'"),
-        }
-    }
-}
-impl std::error::Error for CapabilityParseError {}
 
 
 /// Lists the errors that can occur for the [`PackageInfo`] struct
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum PackageInfoError {
     /// We could not parse a given yaml string as a [`PackageInfo`]
-    IllegalString { err: serde_yaml::Error },
+    #[error("Cannot construct PackageInfo object from YAML string")]
+    IllegalString { source: serde_yaml::Error },
     /// We could not parse a given yaml file as a [`PackageInfo`]
-    IllegalFile { path: PathBuf, err: serde_yaml::Error },
+    #[error("Cannot construct PackageInfo object from YAML file '{}'", path.display())]
+    IllegalFile { path: PathBuf, source: serde_yaml::Error },
     /// We could not parse a given set of JSON-encoded [`PackageInfo`]s
-    IllegalJsonValue { err: serde_json::Error },
+    #[error("Cannot construct PackageInfo object from JSON value")]
+    IllegalJsonValue { source: serde_json::Error },
     /// Could not open the file we wanted to load
-    IOError { path: PathBuf, err: std::io::Error },
+    #[error("Error while trying to read PackageInfo file '{}'", path.display())]
+    IOError { path: PathBuf, source: std::io::Error },
 
     /// Could not create the target file
-    FileCreateError { path: PathBuf, err: std::io::Error },
+    #[error("Could not create package info file '{}'", path.display())]
+    FileCreateError { path: PathBuf, source: std::io::Error },
     /// Could not write to the given writer
-    FileWriteError { err: serde_yaml::Error },
+    #[error("Could not serialize & write package info file")]
+    FileWriteError { source: serde_yaml::Error },
 }
-impl std::fmt::Display for PackageInfoError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PackageInfoError::IllegalString { err } => write!(f, "Cannot construct PackageInfo object from YAML string: {err}"),
-            PackageInfoError::IllegalFile { path, err } => {
-                write!(f, "Cannot construct PackageInfo object from YAML file '{}': {}", path.display(), err)
-            },
-            PackageInfoError::IllegalJsonValue { err } => write!(f, "Cannot construct PackageInfo object from JSON value: {err}"),
-            PackageInfoError::IOError { path, err } => write!(f, "Error while trying to read PackageInfo file '{}': {}", path.display(), err),
-
-            PackageInfoError::FileCreateError { path, err } => write!(f, "Could not create package info file '{}': {}", path.display(), err),
-            PackageInfoError::FileWriteError { err } => write!(f, "Could not serialize & write package info file: {err}"),
-        }
-    }
-}
-impl std::error::Error for PackageInfoError {}
 
 /// Lists the errors that can occur for the [`PackageIndex`] struct
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum PackageIndexError {
     /// A package/version combination has already been loaded into the [`PackageIndex`]
+    #[error("Encountered duplicate version {version} of package '{name}'")]
     DuplicatePackage { name: String, version: String },
     /// Could not parse a version string as one
-    IllegalVersion { package: String, raw: String, err: semver::Error },
+    #[error("Could not parse version string '{raw}' in package.yml of package '{package}' to a Version")]
+    IllegalVersion { package: String, raw: String, source: semver::Error },
 
     /// We could not do a request to some server to get a JSON file
-    RequestFailed { url: String, err: reqwest::Error },
+    #[error("Could not send a request to '{url}'")]
+    RequestFailed { url: String, source: reqwest::Error },
     /// A HTTP request returned a non-200 status code
+    #[error("Request sent to '{url}' returned status {status}")]
     ResponseNot200 { url: String, status: reqwest::StatusCode },
     /// Coult not parse a given remote JSON file as a [`PackageIndex`]
-    IllegalJsonFile { url: String, err: reqwest::Error },
+    #[error("Cannot construct PackageIndex object from JSON file at '{url}'")]
+    IllegalJsonFile { url: String, source: reqwest::Error },
 
     /// Could not parse a given reader with JSON data as a [`PackageIndex`]
-    IllegalJsonReader { err: serde_json::Error },
+    #[error("Cannot construct PackageIndex object from JSON reader")]
+    IllegalJsonReader { source: serde_json::Error },
     /// Could not correct parse the JSON as a list of [`PackageInfo`] structs
-    IllegalPackageInfos { err: PackageInfoError },
+    #[error("Cannot parse list of PackageInfos")]
+    IllegalPackageInfos { source: PackageInfoError },
     /// Could not open the file we wanted to load
-    IOError { path: PathBuf, err: std::io::Error },
+    #[error("Error while trying to read PackageIndex file '{}'", path.display())]
+    IOError { path: PathBuf, source: std::io::Error },
 }
-impl std::fmt::Display for PackageIndexError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PackageIndexError::DuplicatePackage { name, version } => write!(f, "Encountered duplicate version {version} of package '{name}'"),
-            PackageIndexError::IllegalVersion { package, raw, err } => {
-                write!(f, "Could not parse version string '{raw}' in package.yml of package '{package}' to a Version: {err}")
-            },
-
-            PackageIndexError::RequestFailed { url, err } => write!(f, "Could not send a request to '{url}': {err}"),
-            PackageIndexError::ResponseNot200 { url, status } => write!(f, "Request sent to '{url}' returned status {status}"),
-            PackageIndexError::IllegalJsonFile { url, err } => write!(f, "Cannot construct PackageIndex object from JSON file at '{url}': {err}"),
-
-            PackageIndexError::IllegalJsonReader { err } => write!(f, "Cannot construct PackageIndex object from JSON reader: {err}"),
-            PackageIndexError::IllegalPackageInfos { err } => write!(f, "Cannot parse list of PackageInfos: {err}"),
-            PackageIndexError::IOError { path, err } => write!(f, "Error while trying to read PackageIndex file '{}': {}", path.display(), err),
-        }
-    }
-}
-impl std::error::Error for PackageIndexError {}
-
-
-
 
 
 /***** AUXILLARY *****/
@@ -349,18 +308,12 @@ impl PackageInfo {
     /// The new `PackageInfo` upon success, or a [`PackageInfoError`] detailling why if it failed.
     pub fn from_path(path: PathBuf) -> Result<PackageInfo, PackageInfoError> {
         // Read the file first
-        let contents = match fs::read_to_string(&path) {
-            Ok(values) => values,
-            Err(reason) => {
-                return Err(PackageInfoError::IOError { path, err: reason });
-            },
-        };
+        let contents = fs::read_to_string(&path).map_err(|source| PackageInfoError::IOError { path: path.clone(), source })?;
 
         // Next, delegate actual reading to from_string
         match PackageInfo::from_string(contents) {
-            Ok(result) => Ok(result),
-            Err(PackageInfoError::IllegalString { err }) => Err(PackageInfoError::IllegalFile { path, err }),
-            Err(reason) => Err(reason),
+            Err(PackageInfoError::IllegalString { source }) => Err(PackageInfoError::IllegalFile { path: path.clone(), source }),
+            x => x,
         }
     }
 
@@ -375,10 +328,7 @@ impl PackageInfo {
     /// The new `PackageInfo` upon success, or a [`PackageInfoError`] detailling why if it failed.
     pub fn from_string(contents: String) -> Result<PackageInfo, PackageInfoError> {
         // Try to parse using serde
-        match serde_yaml::from_str(&contents) {
-            Ok(result) => Ok(result),
-            Err(reason) => Err(PackageInfoError::IllegalString { err: reason }),
-        }
+        serde_yaml::from_str(&contents).map_err(|source| PackageInfoError::IllegalString { source })
     }
 
     /// Writes the `PackageInfo` to the given location.
@@ -396,12 +346,7 @@ impl PackageInfo {
         let path = path.as_ref();
 
         // Open a file
-        let handle = match File::create(path) {
-            Ok(handle) => handle,
-            Err(err) => {
-                return Err(PackageInfoError::FileCreateError { path: path.to_path_buf(), err });
-            },
-        };
+        let handle = File::create(path).map_err(|source| PackageInfoError::FileCreateError { path: path.to_path_buf(), source })?;
 
         // Use ::to_write() to deal with the actual writing
         self.to_writer(handle)
@@ -419,10 +364,7 @@ impl PackageInfo {
     /// Nothing on success, or a PackageInfoError otherwise.
     pub fn to_writer<W: Write>(&self, writer: W) -> Result<(), PackageInfoError> {
         // Simply write with serde
-        match serde_yaml::to_writer(writer, self) {
-            Ok(()) => Ok(()),
-            Err(err) => Err(PackageInfoError::FileWriteError { err }),
-        }
+        serde_yaml::to_writer(writer, self).map_err(|source| PackageInfoError::FileWriteError { source })
     }
 }
 
@@ -557,12 +499,7 @@ impl PackageIndex {
     /// The new `PackageIndex` if it all went fine, or a [`PackageIndexError`] if it didn't.
     pub fn from_path(path: &Path) -> Result<Self, PackageIndexError> {
         // Try to open the referenced file
-        let file = match File::open(path) {
-            Ok(handle) => handle,
-            Err(reason) => {
-                return Err(PackageIndexError::IOError { path: PathBuf::from(path), err: reason });
-            },
-        };
+        let file = File::open(path).map_err(|source| PackageIndexError::IOError { path: PathBuf::from(path), source })?;
 
         // Wrap it in a bufreader and go to from_reader
         let buf_reader = BufReader::new(file);
@@ -578,15 +515,10 @@ impl PackageIndex {
     /// The new `PackageIndex` if it all went fine, or a [`PackageIndexError`] if it didn't.
     pub fn from_reader<R: Read>(r: R) -> Result<Self, PackageIndexError> {
         // Try to parse using serde
-        let v = match serde_json::from_reader(r) {
-            Ok(value) => value,
-            Err(reason) => {
-                return Err(PackageIndexError::IllegalJsonReader { err: reason });
-            },
-        };
+        let value = serde_json::from_reader(r).map_err(|source| PackageIndexError::IllegalJsonReader { source })?;
 
         // Delegate the parsed JSON struct to the from_value one
-        PackageIndex::from_value(v)
+        PackageIndex::from_value(value)
     }
 
     /// Tries to construct a new `PackageIndex` from a JSON file at the given URL.
@@ -602,18 +534,13 @@ impl PackageIndex {
             Ok(response) => {
                 if response.status() == reqwest::StatusCode::OK {
                     // We have the request; now try to get it as json
-                    match response.json().await {
-                        Ok(value) => value,
-                        Err(reason) => {
-                            return Err(PackageIndexError::IllegalJsonFile { url: url.to_string(), err: reason });
-                        },
-                    }
+                    response.json().await.map_err(|source| PackageIndexError::IllegalJsonFile { url: url.to_string(), source })?
                 } else {
                     return Err(PackageIndexError::ResponseNot200 { url: url.to_string(), status: response.status() });
                 }
             },
             Err(reason) => {
-                return Err(PackageIndexError::RequestFailed { url: url.to_string(), err: reason });
+                return Err(PackageIndexError::RequestFailed { url: url.to_string(), source: reason });
             },
         };
 
@@ -630,12 +557,8 @@ impl PackageIndex {
     /// The new `PackageIndex` if it all went fine, or a [`PackageIndexError`] if it didn't.
     pub fn from_value(v: JValue) -> Result<Self, PackageIndexError> {
         // Parse the known packages from the list of json values
-        let known_packages: Vec<PackageInfo> = match serde_json::from_value(v) {
-            Ok(pkgs) => pkgs,
-            Err(reason) => {
-                return Err(PackageIndexError::IllegalPackageInfos { err: PackageInfoError::IllegalJsonValue { err: reason } });
-            },
-        };
+        let known_packages: Vec<PackageInfo> = serde_json::from_value(v)
+            .map_err(|source| PackageIndexError::IllegalPackageInfos { source: PackageInfoError::IllegalJsonValue { source } })?;
 
         // Construct the package index from the list of packages
         PackageIndex::from_packages(known_packages)

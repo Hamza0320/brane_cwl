@@ -149,7 +149,7 @@ impl TryFrom<PackageInfo> for PackageUdt {
 /// This function errors if the communication with the given database failed too.
 pub async fn ensure_db_table(scylla: &Session) -> Result<(), Error> {
     // Define the `brane.package` type
-    if let Err(err) = scylla
+    scylla
         .query(
             "CREATE TYPE IF NOT EXISTS brane.package (
                 created bigint
@@ -170,7 +170,7 @@ pub async fn ensure_db_table(scylla: &Session) -> Result<(), Error> {
         .map_err(|source| Error::PackageTypeDefineError { source })?;
 
     // Define  the `brane.packages` table
-    if let Err(err) = scylla
+    scylla
         .query(
             "CREATE TABLE IF NOT EXISTS brane.packages (
               name text
@@ -209,7 +209,7 @@ async fn insert_package_into_db(scylla: &Arc<Session>, package: &PackageInfo, pa
     let package: PackageUdt = package.clone().try_into()?;
 
     // Insert it
-    if let Err(err) = scylla
+    scylla
         .query(
             "INSERT INTO brane.packages (
               name

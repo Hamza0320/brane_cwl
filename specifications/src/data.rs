@@ -14,7 +14,6 @@
 //
 
 use std::collections::HashMap;
-use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};
 use std::fs::File;
 use std::io::{Read, Write};
@@ -27,124 +26,69 @@ use serde::{Deserialize, Serialize};
 
 /***** ERRORS *****/
 /// Defines (parsing) errors that relate to the [`DataIndex`] struct.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum DataIndexError {
     /// Failed to open the given file.
-    FileOpenError { path: PathBuf, err: std::io::Error },
+    #[error("Failed to open data index file '{}'", path.display())]
+    FileOpenError { path: PathBuf, source: std::io::Error },
     /// Failed to read/parse the given file.
-    FileParseError { path: PathBuf, err: serde_yaml::Error },
+    #[error("Failed to parse data index file '{}'", path.display())]
+    FileParseError { path: PathBuf, source: serde_yaml::Error },
 
     /// Failed to parse the given reader.
-    ReaderParseError { err: serde_yaml::Error },
+    #[error("Failed to parse given reader as a data index file")]
+    ReaderParseError { source: serde_yaml::Error },
     /// A given asset has appeared multiple times.
+    #[error("Location '{location}' defines an asset with identifier '{name}' more than once")]
     DuplicateAsset { location: String, name: String },
 }
 
-impl Display for DataIndexError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use DataIndexError::*;
-        match self {
-            FileOpenError { path, err } => write!(f, "Failed to open data index file '{}': {}", path.display(), err),
-            FileParseError { path, err } => write!(f, "Failed to parse data index file '{}': {}", path.display(), err),
-
-            ReaderParseError { err } => write!(f, "Failed to parse given reader as a data index file: {err}"),
-            DuplicateAsset { location, name } => write!(f, "Location '{location}' defines an asset with identifier '{name}' more than once"),
-        }
-    }
-}
-
-impl Error for DataIndexError {}
-
-
-
 /// Defines errors that relate to the [`RuntimeDataIndex`] struct.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum RuntimeDataIndexError {
     /// A dataset was already known under this name.
+    #[error("A dataset under the name of '{name}' was already defined")]
     DuplicateDataset { name: String },
 }
 
-impl Display for RuntimeDataIndexError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use RuntimeDataIndexError::*;
-        match self {
-            DuplicateDataset { name } => write!(f, "A dataset under the name of '{name}' was already defined"),
-        }
-    }
-}
-
-impl Error for RuntimeDataIndexError {}
-
-
-
 /// Defines (parsing) errors that relate to the [`DataInfo`] struct.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum DataInfoError {
     /// Failed to open the given file.
-    FileOpenError { path: PathBuf, err: std::io::Error },
+    #[error("Failed to open data info file '{}'", path.display())]
+    FileOpenError { path: PathBuf, source: std::io::Error },
     /// Failed to read/parse the given file.
-    FileParseError { path: PathBuf, err: serde_yaml::Error },
+    #[error("Failed to parse data info file '{}'", path.display())]
+    FileParseError { path: PathBuf, source: serde_yaml::Error },
     /// Failed to create the given file.
-    FileCreateError { path: PathBuf, err: std::io::Error },
+    #[error("Failed to create data info file '{}'", path.display())]
+    FileCreateError { path: PathBuf, source: std::io::Error },
     /// Failed to write to the given file.
-    FileWriteError { path: PathBuf, err: serde_yaml::Error },
+    #[error("Failed to write to data info file '{}'", path.display())]
+    FileWriteError { path: PathBuf, source: serde_yaml::Error },
 
     /// Failed to parse the given reader.
-    ReaderParseError { err: serde_yaml::Error },
+    #[error("Failed to parse given reader as a data info file")]
+    ReaderParseError { source: serde_yaml::Error },
     /// Failed to write to the given writer.
-    WriterWriteError { err: serde_yaml::Error },
+    #[error("Failed to write the data info file to given writer")]
+    WriterWriteError { source: serde_yaml::Error },
 }
-
-impl Display for DataInfoError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use DataInfoError::*;
-        match self {
-            FileOpenError { path, err } => write!(f, "Failed to open data info file '{}': {}", path.display(), err),
-            FileParseError { path, err } => write!(f, "Failed to parse data info file '{}': {}", path.display(), err),
-            FileCreateError { path, err } => write!(f, "Failed to create data info file '{}': {}", path.display(), err),
-            FileWriteError { path, err } => write!(f, "Failed to write to data info file '{}': {}", path.display(), err),
-
-            ReaderParseError { err } => write!(f, "Failed to parse given reader as a data info file: {err}"),
-            WriterWriteError { err } => write!(f, "Failed to write the data info file to given writer: {err}"),
-        }
-    }
-}
-
-impl Error for DataInfoError {}
 
 /// Defines (parsing) errors that relate to the [`AssetInfo`] struct.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum AssetInfoError {
     /// Failed to open the given file.
-    FileOpenError { path: PathBuf, err: std::io::Error },
+    #[error("Failed to open asset info file '{}'", path.display())]
+    FileOpenError { path: PathBuf, source: std::io::Error },
     /// Failed to read/parse the given file.
-    FileParseError { path: PathBuf, err: serde_yaml::Error },
+    #[error("Failed to parse asset info file '{}'", path.display())]
+    FileParseError { path: PathBuf, source: serde_yaml::Error },
 
     /// Failed to parse the given reader.
-    ReaderParseError { err: serde_yaml::Error },
+    #[error("Failed to parse given reader as a asset info file")]
+    ReaderParseError { source: serde_yaml::Error },
 }
-
-impl Display for AssetInfoError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use AssetInfoError::*;
-        match self {
-            FileOpenError { path, err } => write!(f, "Failed to open asset info file '{}': {}", path.display(), err),
-            FileParseError { path, err } => write!(f, "Failed to parse asset info file '{}': {}", path.display(), err),
-
-            ReaderParseError { err } => write!(f, "Failed to parse given reader as a asset info file: {err}"),
-        }
-    }
-}
-
-impl Error for AssetInfoError {}
-
-
-
-
 
 // /***** HELPER STRUCTS *****/
 // /// Defines a more general DataInfo used in the DataIndex.
@@ -358,18 +302,12 @@ impl DataIndex {
         let path: &Path = path.as_ref();
 
         // Open the file
-        let handle: File = match File::open(path) {
-            Ok(handle) => handle,
-            Err(err) => {
-                return Err(DataIndexError::FileOpenError { path: path.into(), err });
-            },
-        };
+        let handle: File = File::open(path).map_err(|source| DataIndexError::FileOpenError { path: path.into(), source })?;
 
         // Pass to the reader for the heavy lifting
         match Self::from_reader(handle) {
-            Ok(res) => Ok(res),
-            Err(DataIndexError::ReaderParseError { err }) => Err(DataIndexError::FileParseError { path: path.into(), err }),
-            Err(err) => Err(err),
+            Err(DataIndexError::ReaderParseError { source }) => Err(DataIndexError::FileParseError { path: path.into(), source }),
+            x => x,
         }
     }
 
@@ -388,10 +326,7 @@ impl DataIndex {
     /// This function errors if we could not read or parse the reader.
     #[inline]
     pub fn from_reader<R: Read>(reader: R) -> Result<Self, DataIndexError> {
-        match serde_yaml::from_reader(reader) {
-            Ok(res) => Ok(res),
-            Err(err) => Err(DataIndexError::ReaderParseError { err }),
-        }
+        serde_yaml::from_reader(reader).map_err(|source| DataIndexError::ReaderParseError { source })
     }
 
     /// Constructor for the `DataIndex` that creates it from a list of [`DataInfo`]s.
@@ -606,18 +541,12 @@ impl DataInfo {
         let path: &Path = path.as_ref();
 
         // Open the file
-        let handle: File = match File::open(path) {
-            Ok(handle) => handle,
-            Err(err) => {
-                return Err(DataInfoError::FileOpenError { path: path.into(), err });
-            },
-        };
+        let handle: File = File::open(path).map_err(|source| DataInfoError::FileOpenError { path: path.into(), source })?;
 
         // Pass to the reader for the heavy lifting
         match Self::from_reader(handle) {
-            Ok(res) => Ok(res),
-            Err(DataInfoError::ReaderParseError { err }) => Err(DataInfoError::FileParseError { path: path.into(), err }),
-            Err(err) => Err(err),
+            Err(DataInfoError::ReaderParseError { source }) => Err(DataInfoError::FileParseError { path: path.into(), source }),
+            x => x,
         }
     }
 
@@ -636,10 +565,7 @@ impl DataInfo {
     /// This function errors if we could not read or parse the reader.
     #[inline]
     pub fn from_reader<R: Read>(reader: R) -> Result<Self, DataInfoError> {
-        match serde_yaml::from_reader(reader) {
-            Ok(res) => Ok(res),
-            Err(err) => Err(DataInfoError::ReaderParseError { err }),
-        }
+        serde_yaml::from_reader(reader).map_err(|source| DataInfoError::ReaderParseError { source })
     }
 
     /// Writes the `DataInfo` to the given path.
@@ -654,18 +580,12 @@ impl DataInfo {
     /// This function errors if we could not create or write to the new file.
     pub fn to_path(&self, path: impl AsRef<Path>) -> Result<(), DataInfoError> {
         // Open the file
-        let handle: File = match File::create(path.as_ref()) {
-            Ok(handle) => handle,
-            Err(err) => {
-                return Err(DataInfoError::FileCreateError { path: path.as_ref().into(), err });
-            },
-        };
+        let handle: File = File::create(path.as_ref()).map_err(|source| DataInfoError::FileCreateError { path: path.as_ref().into(), source })?;
 
         // Do the rest by virtue of `DataInfo::to_writer()`
         match self.to_writer(handle) {
-            Ok(_) => Ok(()),
-            Err(DataInfoError::WriterWriteError { err }) => Err(DataInfoError::FileWriteError { path: path.as_ref().into(), err }),
-            Err(err) => Err(err),
+            Err(DataInfoError::WriterWriteError { source }) => Err(DataInfoError::FileWriteError { path: path.as_ref().into(), source }),
+            x => x,
         }
     }
 
@@ -681,10 +601,7 @@ impl DataInfo {
     /// This function errors if we could not write to the given writer.
     #[inline]
     pub fn to_writer(&self, writer: impl Write) -> Result<(), DataInfoError> {
-        match serde_yaml::to_writer(writer, self) {
-            Ok(_) => Ok(()),
-            Err(err) => Err(DataInfoError::WriterWriteError { err }),
-        }
+        serde_yaml::to_writer(writer, self).map_err(|source| DataInfoError::WriterWriteError { source })
     }
 }
 
@@ -722,18 +639,12 @@ impl AssetInfo {
         let path: &Path = path.as_ref();
 
         // Open the file
-        let handle: File = match File::open(path) {
-            Ok(handle) => handle,
-            Err(err) => {
-                return Err(AssetInfoError::FileOpenError { path: path.into(), err });
-            },
-        };
+        let handle: File = File::open(path).map_err(|source| AssetInfoError::FileOpenError { path: path.into(), source })?;
 
         // Pass to the reader for the heavy lifting
         match Self::from_reader(handle) {
-            Ok(res) => Ok(res),
-            Err(AssetInfoError::ReaderParseError { err }) => Err(AssetInfoError::FileParseError { path: path.into(), err }),
-            Err(err) => Err(err),
+            Err(AssetInfoError::ReaderParseError { source }) => Err(AssetInfoError::FileParseError { path: path.into(), source }),
+            x => x,
         }
     }
 
@@ -752,10 +663,7 @@ impl AssetInfo {
     /// This function errors if we could not read or parse the reader.
     #[inline]
     pub fn from_reader<R: Read>(reader: R) -> Result<Self, AssetInfoError> {
-        match serde_yaml::from_reader::<R, Self>(reader) {
-            Ok(res) => Ok(res),
-            Err(err) => Err(AssetInfoError::ReaderParseError { err }),
-        }
+        serde_yaml::from_reader::<R, Self>(reader).map_err(|source| AssetInfoError::ReaderParseError { source })
     }
 
     /// Converts this `AssetInfo` into a [`DataInfo`] under the given domain.

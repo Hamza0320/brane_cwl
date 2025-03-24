@@ -17,7 +17,6 @@
 
 use std::borrow::Cow;
 use std::convert::TryFrom;
-use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
@@ -31,39 +30,18 @@ use serde::{Deserialize, Serialize};
 
 /***** ERRORS *****/
 /// Errors that relate to parsing Addresses.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum AddressError {
     /// Invalid port number.
-    IllegalPortNumber { raw: String, err: std::num::ParseIntError },
+    #[error("Illegal port number '{raw}'")]
+    IllegalPortNumber { raw: String, source: std::num::ParseIntError },
     /// Missing the colon separator (':') in the address.
+    #[error("Missing address/port separator ':' in '{raw}' (did you forget to define a port?)")]
     MissingColon { raw: String },
     /// Port not found when translating an [`AddressOpt`] into an [`Address`].
+    #[error("Address '{addr}' does not have a port")]
     MissingPort { addr: AddressOpt },
 }
-impl Display for AddressError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use AddressError::*;
-        match self {
-            IllegalPortNumber { raw, .. } => write!(f, "Illegal port number '{raw}'"),
-            MissingColon { raw } => write!(f, "Missing address/port separator ':' in '{raw}' (did you forget to define a port?)"),
-            MissingPort { addr } => write!(f, "Address '{addr}' does not have a port"),
-        }
-    }
-}
-impl Error for AddressError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        use AddressError::*;
-        match self {
-            IllegalPortNumber { err, .. } => Some(err),
-            MissingColon { .. } => None,
-            MissingPort { .. } => None,
-        }
-    }
-}
-
-
-
-
 
 /***** LIBRARY *****/
 /// Defines a more lenient alternative to a [`std::net::SocketAddr`] that also accepts hostnames.
@@ -285,12 +263,7 @@ impl FromStr for Address {
         let (address, port): (&str, &str) = (&s[..colon_pos], &s[colon_pos + 1..]);
 
         // Parse the port
-        let port: u16 = match u16::from_str(port) {
-            Ok(port) => port,
-            Err(err) => {
-                return Err(AddressError::IllegalPortNumber { raw: port.into(), err });
-            },
-        };
+        let port: u16 = u16::from_str(port).map_err(|source| AddressError::IllegalPortNumber { raw: port.into(), source })?;
 
         // Resolve the address to a new instance of ourselves
         match IpAddr::from_str(address) {
@@ -298,8 +271,8 @@ impl FromStr for Address {
                 IpAddr::V4(ip) => Ok(Self::Ipv4(ip, port)),
                 IpAddr::V6(ip) => Ok(Self::Ipv6(ip, port)),
             },
-            Err(err) => {
-                trace!("Parsing '{}' as a hostname, but might be an invalid IP address (parser feedback: {})", address, err);
+            Err(source) => {
+                trace!("Parsing '{}' as a hostname, but might be an invalid IP address (parser feedback: {})", address, source);
                 Ok(Self::Hostname(address.into(), port))
             },
         }
@@ -584,7 +557,8 @@ impl FromStr for AddressOpt {
         };
 
         // Parse the port, if any
-        let port: Option<u16> = port.map(|p| u16::from_str(p).map_err(|err| AddressError::IllegalPortNumber { raw: p.into(), err })).transpose()?;
+        let port: Option<u16> =
+            port.map(|p| u16::from_str(p).map_err(|source| AddressError::IllegalPortNumber { raw: p.into(), source })).transpose()?;
 
         // Resolve the address to a new instance of ourselves
         match IpAddr::from_str(address) {

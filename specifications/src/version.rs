@@ -14,7 +14,6 @@
 //
 
 use std::cmp::Ordering;
-use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};
 use std::str::FromStr;
 
@@ -62,11 +61,14 @@ mod tests {
 
         // Test if it fails properly too
         assert_eq!(Version::from_str(&format!("{}.{}.{}", u64::MAX, u64::MAX, u64::MAX)), Err(ParseError::AccidentalLatest));
-        assert_eq!(Version::from_str("a"), Err(ParseError::MajorParseError { raw: String::from("a"), err: u64::from_str("a").unwrap_err() }));
-        assert_eq!(Version::from_str("42.a"), Err(ParseError::MinorParseError { raw: String::from("a"), err: u64::from_str("a").unwrap_err() }));
-        assert_eq!(Version::from_str("42.21.a"), Err(ParseError::PatchParseError { raw: String::from("a"), err: u64::from_str("a").unwrap_err() }));
-        assert_eq!(Version::from_str("a.b.c"), Err(ParseError::MajorParseError { raw: String::from("a"), err: u64::from_str("a").unwrap_err() }));
-        assert_eq!(Version::from_str("42.b.c"), Err(ParseError::MinorParseError { raw: String::from("b"), err: u64::from_str("b").unwrap_err() }));
+        assert_eq!(Version::from_str("a"), Err(ParseError::MajorParseError { raw: String::from("a"), source: u64::from_str("a").unwrap_err() }));
+        assert_eq!(Version::from_str("42.a"), Err(ParseError::MinorParseError { raw: String::from("a"), source: u64::from_str("a").unwrap_err() }));
+        assert_eq!(
+            Version::from_str("42.21.a"),
+            Err(ParseError::PatchParseError { raw: String::from("a"), source: u64::from_str("a").unwrap_err() })
+        );
+        assert_eq!(Version::from_str("a.b.c"), Err(ParseError::MajorParseError { raw: String::from("a"), source: u64::from_str("a").unwrap_err() }));
+        assert_eq!(Version::from_str("42.b.c"), Err(ParseError::MinorParseError { raw: String::from("b"), source: u64::from_str("b").unwrap_err() }));
     }
 
     #[test]
@@ -145,23 +147,23 @@ mod tests {
         assert_de_tokens_error::<Version>(&[Token::Str(ACCIDENTAL_LATEST_STRING)], &format!("{}", ParseError::AccidentalLatest));
         assert_de_tokens_error::<Version>(
             &[Token::Str("a")],
-            &format!("{}", ParseError::MajorParseError { raw: String::from("a"), err: u64::from_str("a").unwrap_err() }),
+            &format!("{}", ParseError::MajorParseError { raw: String::from("a"), source: u64::from_str("a").unwrap_err() }),
         );
         assert_de_tokens_error::<Version>(
             &[Token::Str("42.a")],
-            &format!("{}", ParseError::MinorParseError { raw: String::from("a"), err: u64::from_str("a").unwrap_err() }),
+            &format!("{}", ParseError::MinorParseError { raw: String::from("a"), source: u64::from_str("a").unwrap_err() }),
         );
         assert_de_tokens_error::<Version>(
             &[Token::Str("42.21.a")],
-            &format!("{}", ParseError::PatchParseError { raw: String::from("a"), err: u64::from_str("a").unwrap_err() }),
+            &format!("{}", ParseError::PatchParseError { raw: String::from("a"), source: u64::from_str("a").unwrap_err() }),
         );
         assert_de_tokens_error::<Version>(
             &[Token::Str("a.b.c")],
-            &format!("{}", ParseError::MajorParseError { raw: String::from("a"), err: u64::from_str("a").unwrap_err() }),
+            &format!("{}", ParseError::MajorParseError { raw: String::from("a"), source: u64::from_str("a").unwrap_err() }),
         );
         assert_de_tokens_error::<Version>(
             &[Token::Str("42.b.c")],
-            &format!("{}", ParseError::MinorParseError { raw: String::from("b"), err: u64::from_str("b").unwrap_err() }),
+            &format!("{}", ParseError::MinorParseError { raw: String::from("b"), source: u64::from_str("b").unwrap_err() }),
         );
     }
 }
@@ -172,70 +174,42 @@ mod tests {
 
 /***** ERRORS *****/
 /// Collects errors that relate to the Version.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, thiserror::Error)]
 pub enum ResolveError {
     /// Could not resolve the version as it's already resolved.
+    #[error("Cannot resolve already resolved version '{version}'")]
     AlreadyResolved { version: Version },
     /// One of the versions we use to resolve this version is not resolved
+    #[error("Cannot resolve version with unresolved versions")]
     NotResolved,
     /// Could not resolve this version, as no versions are given
+    #[error("Cannot resolve version without any versions given")]
     NoVersions,
 }
 
-impl Display for ResolveError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        match self {
-            ResolveError::AlreadyResolved { version } => write!(f, "Cannot resolve already resolved version '{version}'"),
-            ResolveError::NotResolved => write!(f, "Cannot resolve version with unresolved versions"),
-            ResolveError::NoVersions => write!(f, "Cannot resolve version without any versions given"),
-        }
-    }
-}
-
-impl Error for ResolveError {}
-
-
-
 /// Collects errors that relate to the Version.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, thiserror::Error)]
 pub enum ParseError {
     /// We accidentally created a 'latest' version
+    #[error("A version with all numbers to {} (64-bit, unsigned integer max) cannot be created; use 'latest' instead", u64::MAX)]
     AccidentalLatest,
     /// Could not parse the major version number
-    MajorParseError { raw: String, err: std::num::ParseIntError },
+    #[error("Could not parse major version number '{raw}'")]
+    MajorParseError { raw: String, source: std::num::ParseIntError },
     /// Could not parse the minor version number
-    MinorParseError { raw: String, err: std::num::ParseIntError },
+    #[error("Could not parse minor version number '{raw}'")]
+    MinorParseError { raw: String, source: std::num::ParseIntError },
     /// Could not parse the patch version number
-    PatchParseError { raw: String, err: std::num::ParseIntError },
+    #[error("Could not parse patch version number '{raw}'")]
+    PatchParseError { raw: String, source: std::num::ParseIntError },
 
     /// Got a NAME:VERSION pair with too many colons
+    #[error("Given 'NAME[:VERSION]' pair '{raw}' has too many colons (got {got}, expected at most 1)")]
     TooManyColons { raw: String, got: usize },
     /// Could not parse the Version in a given NAME:VERSION pair.
-    IllegalVersion { raw: String, raw_version: String, err: Box<Self> },
+    #[error("Could not parse version '{raw_version}' in '{raw}'")]
+    IllegalVersion { raw: String, raw_version: String, source: Box<Self> },
 }
-
-impl Display for ParseError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use ParseError::*;
-        match self {
-            AccidentalLatest => {
-                write!(f, "A version with all numbers to {} (64-bit, unsigned integer max) cannot be created; use 'latest' instead", u64::MAX)
-            },
-            MajorParseError { raw, err } => write!(f, "Could not parse major version number '{raw}': {err}"),
-            MinorParseError { raw, err } => write!(f, "Could not parse minor version number '{raw}': {err}"),
-            PatchParseError { raw, err } => write!(f, "Could not parse patch version number '{raw}': {err}"),
-
-            TooManyColons { raw, got } => write!(f, "Given 'NAME[:VERSION]' pair '{raw}' has too many colons (got {got}, expected at most 1)"),
-            IllegalVersion { raw, raw_version, err } => write!(f, "Could not parse version '{raw_version}' in '{raw}': {err}"),
-        }
-    }
-}
-
-impl Error for ParseError {}
-
-
-
-
 
 /***** HELPER STRUCTS *****/
 /// Implements a Visitor for the Version.
@@ -320,12 +294,11 @@ impl Version {
             let version: &str = &package[colon_pos + 1..];
 
             // Attempt to parse the Version
-            let version: Self = match Self::from_str(version) {
-                Ok(version) => version,
-                Err(err) => {
-                    return Err(ParseError::IllegalVersion { raw: package.into(), raw_version: version.into(), err: Box::new(err) });
-                },
-            };
+            let version: Self = Self::from_str(version).map_err(|source| ParseError::IllegalVersion {
+                raw: package.into(),
+                raw_version: version.into(),
+                source: Box::new(source),
+            })?;
 
             // Return them as a pair
             Ok((name.to_string(), version))
@@ -457,30 +430,15 @@ impl FromStr for Version {
         let smajor = if !smajor.is_empty() && smajor.starts_with('v') { &smajor[1..] } else { smajor };
 
         // Try to parse each part
-        let major = match u64::from_str(smajor) {
-            Ok(major) => major,
-            Err(err) => {
-                return Err(ParseError::MajorParseError { raw: smajor.to_string(), err });
-            },
-        };
+        let major = u64::from_str(smajor).map_err(|source| ParseError::MajorParseError { raw: smajor.to_string(), source })?;
         let minor = if !sminor.is_empty() {
-            match u64::from_str(sminor) {
-                Ok(minor) => minor,
-                Err(err) => {
-                    return Err(ParseError::MinorParseError { raw: sminor.to_string(), err });
-                },
-            }
+            u64::from_str(sminor).map_err(|source| ParseError::MinorParseError { raw: sminor.to_string(), source })?
         } else {
             // Otherwise, use the standard minor value
             0
         };
         let patch = if !spatch.is_empty() {
-            match u64::from_str(spatch) {
-                Ok(patch) => patch,
-                Err(err) => {
-                    return Err(ParseError::PatchParseError { raw: spatch.to_string(), err });
-                },
-            }
+            u64::from_str(spatch).map_err(|source| ParseError::PatchParseError { raw: spatch.to_string(), source })?
         } else {
             // Otherwise, use the standard patch value
             0

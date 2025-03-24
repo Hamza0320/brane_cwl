@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -23,89 +22,48 @@ type Map<T> = std::collections::HashMap<String, T>;
 
 /***** ERRORS *****/
 /// Defines error(s) for the [`VolumeBind`] struct.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum VolumeBindError {
     /// The given path is not an absolute path.
+    #[error("Given path '{}' is not absolute", path.display())]
     PathNotAbsolute { path: PathBuf },
 }
 
-impl Display for VolumeBindError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use VolumeBindError::*;
-        match self {
-            PathNotAbsolute { path } => write!(f, "Given path '{}' is not absolute", path.display()),
-        }
-    }
-}
-
-impl std::error::Error for VolumeBindError {}
-
-
-
 /// Collect errors relating to the `LocalContainer` specification.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum LocalContainerInfoError {
     /// Could not open the target file
-    FileOpenError { path: PathBuf, err: std::io::Error },
+    #[error("Could not open local container file '{}'", path.display())]
+    FileOpenError { path: PathBuf, source: std::io::Error },
     /// Could not parse the target file
-    FileParseError { err: serde_yaml::Error },
+    #[error("Could not read & parse local container file")]
+    FileParseError { source: serde_yaml::Error },
 
     /// Could not create the target file
-    FileCreateError { path: PathBuf, err: std::io::Error },
+    #[error("Could not create local container file '{}'", path.display())]
+    FileCreateError { path: PathBuf, source: std::io::Error },
     /// Could not write to the given writer
-    FileWriteError { err: serde_yaml::Error },
+    #[error("Could not serialize & write local container file")]
+    FileWriteError { source: serde_yaml::Error },
 }
-
-impl Display for LocalContainerInfoError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        match self {
-            LocalContainerInfoError::FileOpenError { path, err } => write!(f, "Could not open local container file '{}': {}", path.display(), err),
-            LocalContainerInfoError::FileParseError { err } => write!(f, "Could not read & parse local container file: {err}"),
-
-            LocalContainerInfoError::FileCreateError { path, err } => {
-                write!(f, "Could not create local container file '{}': {}", path.display(), err)
-            },
-            LocalContainerInfoError::FileWriteError { err } => write!(f, "Could not serialize & write local container file: {err}"),
-        }
-    }
-}
-
-impl Error for LocalContainerInfoError {}
-
-
 
 /// Collects errors relating to the Container specification.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ContainerInfoError {
     /// Could not open the target file
-    FileReadError { path: PathBuf, err: std::io::Error },
+    #[error("Could not open & read container file '{}'", path.display())]
+    FileReadError { path: PathBuf, source: std::io::Error },
     /// Could not parse the target file
-    ParseError { err: serde_yaml::Error },
+    #[error("Could not parse container file YAML")]
+    ParseError { source: serde_yaml::Error },
 
     /// Could not create the target file
-    FileCreateError { path: PathBuf, err: std::io::Error },
+    #[error("Could not create container file '{}'", path.display())]
+    FileCreateError { path: PathBuf, source: std::io::Error },
     /// Could not write to the given writer
-    FileWriteError { err: serde_yaml::Error },
+    #[error("Could not serialize & write container file")]
+    FileWriteError { source: serde_yaml::Error },
 }
-
-impl Display for ContainerInfoError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        match self {
-            ContainerInfoError::FileReadError { path, err } => write!(f, "Could not open & read container file '{}': {}", path.display(), err),
-            ContainerInfoError::ParseError { err } => write!(f, "Could not parse container file YAML: {err}"),
-
-            ContainerInfoError::FileCreateError { path, err } => write!(f, "Could not create container file '{}': {}", path.display(), err),
-            ContainerInfoError::FileWriteError { err } => write!(f, "Could not serialize & write container file: {err}"),
-        }
-    }
-}
-
-impl Error for ContainerInfoError {}
-
-
-
-
 
 /***** SPECIFICATIONS *****/
 /// A special struct that prints a given [`VolumeBindOption`] as a Docker-compatible string.
@@ -384,12 +342,7 @@ impl LocalContainerInfo {
         let path = path.as_ref();
 
         // Open the file to read it
-        let handle = match File::open(path) {
-            Ok(handle) => handle,
-            Err(err) => {
-                return Err(LocalContainerInfoError::FileOpenError { path: path.to_path_buf(), err });
-            },
-        };
+        let handle = File::open(path).map_err(|source| LocalContainerInfoError::FileOpenError { path: path.to_path_buf(), source })?;
 
         // Do the parsing with from_reader()
         Self::from_reader(handle)
@@ -407,10 +360,7 @@ impl LocalContainerInfo {
     /// A new `LocalContainerInfo` on success, or else a [`LocalContainerInfoError`].
     pub fn from_reader<R: Read>(reader: R) -> Result<Self, LocalContainerInfoError> {
         // Simply pass to serde
-        match serde_yaml::from_reader(reader) {
-            Ok(result) => Ok(result),
-            Err(err) => Err(LocalContainerInfoError::FileParseError { err }),
-        }
+        serde_yaml::from_reader(reader).map_err(|source| LocalContainerInfoError::FileParseError { source })
     }
 
     /// Writes the `LocalContainerInfo` to the given location.
@@ -428,12 +378,7 @@ impl LocalContainerInfo {
         let path = path.as_ref();
 
         // Open a file
-        let handle = match File::create(path) {
-            Ok(handle) => handle,
-            Err(err) => {
-                return Err(LocalContainerInfoError::FileCreateError { path: path.to_path_buf(), err });
-            },
-        };
+        let handle = File::create(path).map_err(|source| LocalContainerInfoError::FileCreateError { path: path.to_path_buf(), source })?;
 
         // Use ::to_write() to deal with the actual writing
         self.to_writer(handle)
@@ -451,10 +396,7 @@ impl LocalContainerInfo {
     /// Nothing on success, or a [`LocalContainerInfoError`] otherwise.
     pub fn to_writer<W: Write>(&self, writer: W) -> Result<(), LocalContainerInfoError> {
         // Simply write with serde
-        match serde_yaml::to_writer(writer, self) {
-            Ok(()) => Ok(()),
-            Err(err) => Err(LocalContainerInfoError::FileWriteError { err }),
-        }
+        serde_yaml::to_writer(writer, self).map_err(|source| LocalContainerInfoError::FileWriteError { source })
     }
 }
 
@@ -539,12 +481,7 @@ impl ContainerInfo {
         let path = path.as_ref();
 
         // Read the contents in one go
-        let contents = match fs::read_to_string(path) {
-            Ok(contents) => contents,
-            Err(err) => {
-                return Err(ContainerInfoError::FileReadError { path: path.to_path_buf(), err });
-            },
-        };
+        let contents = fs::read_to_string(path).map_err(|source| ContainerInfoError::FileReadError { path: path.to_path_buf(), source })?;
 
         // Delegate the actual parsing to from_string
         ContainerInfo::from_string(contents)
@@ -558,10 +495,7 @@ impl ContainerInfo {
     /// **Returns**  
     /// The newly constructed `ContainerInfo` instance on success, or a [`ContainerInfoError`] upon failure.
     pub fn from_reader<R: Read>(r: R) -> Result<ContainerInfo, ContainerInfoError> {
-        match serde_yaml::from_reader(r) {
-            Ok(result) => Ok(result),
-            Err(err) => Err(ContainerInfoError::ParseError { err }),
-        }
+        serde_yaml::from_reader(r).map_err(|source| ContainerInfoError::ParseError { source })
     }
 
     /// Returns a `ContainerInfo` by constructing it from the given string of YAML text.
@@ -572,10 +506,7 @@ impl ContainerInfo {
     /// **Returns**  
     /// The newly constructed `ContainerInfo` instance on success, or a [`ContainerInfoError`] upon failure.
     pub fn from_string(contents: String) -> Result<ContainerInfo, ContainerInfoError> {
-        match serde_yaml::from_str(&contents) {
-            Ok(result) => Ok(result),
-            Err(err) => Err(ContainerInfoError::ParseError { err }),
-        }
+        serde_yaml::from_str(&contents).map_err(|source| ContainerInfoError::ParseError { source })
     }
 
     /// Writes the `ContainerInfo` to the given location.
@@ -593,12 +524,7 @@ impl ContainerInfo {
         let path = path.as_ref();
 
         // Open a file
-        let handle = match File::create(path) {
-            Ok(handle) => handle,
-            Err(err) => {
-                return Err(ContainerInfoError::FileCreateError { path: path.to_path_buf(), err });
-            },
-        };
+        let handle = File::create(path).map_err(|source| ContainerInfoError::FileCreateError { path: path.to_path_buf(), source })?;
 
         // Use ::to_write() to deal with the actual writing
         self.to_writer(handle)
@@ -616,10 +542,7 @@ impl ContainerInfo {
     /// Nothing on success, or a [`ContainerInfoError`] otherwise.
     pub fn to_writer<W: Write>(&self, writer: W) -> Result<(), ContainerInfoError> {
         // Simply write with serde
-        match serde_yaml::to_writer(writer, self) {
-            Ok(()) => Ok(()),
-            Err(err) => Err(ContainerInfoError::FileWriteError { err }),
-        }
+        serde_yaml::to_writer(writer, self).map_err(|source| ContainerInfoError::FileWriteError { source })
     }
 }
 
