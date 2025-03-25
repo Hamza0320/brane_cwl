@@ -328,7 +328,7 @@ pub async fn process_instance(
         }
     }
 
-    // DOne
+    // Done
     Ok(())
 }
 
@@ -815,12 +815,7 @@ pub async fn process_instance_result(
     let certs_dir =
         InstanceInfo::get_instance_path(&instance_name).map_err(|err| Error::InstancePathError { name: instance_name, err })?.join("certs");
 
-    let datasets_dir: PathBuf = match ensure_datasets_dir(true) {
-        Ok(datas_dir) => datas_dir,
-        Err(err) => {
-            return Err(Error::DatasetsDirError { err });
-        },
-    };
+    let datasets_dir = ensure_datasets_dir(true).map_err(|err| Error::DatasetsDirError { err })?;
 
     // Run the instance function
     process_instance(api_endpoint, proxy_addr, certs_dir, datasets_dir, use_case, workflow, result).await

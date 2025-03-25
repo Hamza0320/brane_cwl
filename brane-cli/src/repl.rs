@@ -255,13 +255,9 @@ async fn remote_repl(
     let drv_address: String = info.drv.to_string();
 
     // First we initialize the remote thing
-    let mut state: InstanceVmState<Stdout, Stderr> =
-        match initialize_instance_vm(&api_address, &drv_address, Some(info.user.clone()), attach, options).await {
-            Ok(state) => state,
-            Err(err) => {
-                return Err(Error::InitializeError { what: "remote instance client", err });
-            },
-        };
+    let mut state: InstanceVmState<Stdout, Stderr> = initialize_instance_vm(&api_address, &drv_address, Some(info.user.clone()), attach, options)
+        .await
+        .map_err(|err| Error::InitializeError { what: "remote instance client", err })?;
 
     // Next, enter the L in REPL
     let mut count: u32 = 1;

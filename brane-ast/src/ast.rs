@@ -66,10 +66,6 @@ fn generate_random_workflow_id() -> String {
     format!("workflow-{}", rand::rng().sample_iter(Alphanumeric).take(8).map(char::from).collect::<String>())
 }
 
-
-
-
-
 /***** TOPLEVEL *****/
 /// Defines a Workflow, which is meant to be an 'executable but reasonable' graph.
 #[derive(Clone, Debug, Deserialize, Serialize)]

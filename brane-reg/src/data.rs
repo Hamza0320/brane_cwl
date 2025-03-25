@@ -129,7 +129,7 @@ pub async fn assert_asset_permission(
         }
     } else {
         // Authenticate the scientist
-        match &*workflow.user {
+        match workflow.user.as_ref() {
             Some(user) => {
                 if client_name != user {
                     return Err(AuthorizeError::AuthorizationUserMismatch {
@@ -588,7 +588,7 @@ pub async fn download_data(
     }
 }
 
-/// Handles a GET that downloads an intermediate result. This basically emulates a data transfer.
+/// Handles a GET that downloads an intermediate result. This basically *emulates* a data transfer.
 ///
 /// # Arguments
 /// - `cert`: The client certificate by which we may extract some identity. Only clients that are authenticated by the local store may connect.

@@ -87,10 +87,10 @@ async fn main() -> Result<()> {
 ///
 /// Runs one of the subcommand as given on the Cli.
 ///
-/// **Arguments**
-///  * `options`: The struct with (parsed) Cli-options and subcommands.
+/// # Arguments
+/// * `options`: The struct with (parsed) Cli-options and subcommands.
 ///
-/// **Returns**  
+/// # Returns
 /// Nothing if the subcommand executed successfully (they are self-contained), or a CliError otherwise.
 async fn run(options: Cli) -> Result<(), CliError> {
     use SubCommand::*;
