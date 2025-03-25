@@ -13,11 +13,14 @@
 //
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
+use brane_ast::Workflow;
+use brane_ast::ast::Edge;
 use brane_shr::fs::copy_dir_recursively_async;
 use brane_shr::utilities::is_ip_addr;
 use brane_tsk::spec::LOCALHOST;
@@ -25,14 +28,14 @@ use chrono::Utc;
 use console::{Alignment, Term, pad_str, style};
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::{Confirm, Select};
-use hyper::body::Bytes;
 use indicatif::HumanDuration;
 use prettytable::Table;
 use prettytable::format::FormatBuilder;
 use rand::prelude::IteratorRandom;
 use reqwest::tls::{Certificate, Identity};
-use reqwest::{Client, ClientBuilder, Proxy, Response};
-use specifications::data::{AccessKind, AssetInfo, DataIndex, DataInfo};
+use reqwest::{Client, ClientBuilder, Proxy};
+use specifications::data::{AccessKind, AssetInfo, DataIndex, DataInfo, DataName};
+use specifications::registering::DownloadAssetRequest;
 use tempfile::TempDir;
 use tokio::fs as tfs;
 use tokio::io::AsyncWriteExt;
@@ -61,12 +64,15 @@ use crate::utils::{ensure_dataset_dir, ensure_datasets_dir, get_dataset_dir};
 ///
 /// # Errors
 /// This function errors if we failed to download the dataset somehow.
+#[allow(clippy::too_many_arguments)]
 pub async fn download_data(
     api_endpoint: impl AsRef<str>,
     proxy_addr: &Option<String>,
     certs_dir: impl AsRef<Path>,
     data_dir: impl AsRef<Path>,
+    use_case: String,
     name: impl AsRef<str>,
+    workflow: Workflow,
     access: &HashMap<String, AccessKind>,
 ) -> Result<Option<AccessKind>, DataError> {
     let api_endpoint: &str = api_endpoint.as_ref();
@@ -86,7 +92,7 @@ pub async fn download_data(
 
     // Send a GET-request to resolve that location to a delegate
     let registry_addr: String = format!("{api_endpoint}/infra/registries/{location}");
-    let res: Response = match reqwest::get(&registry_addr).await {
+    let res = match reqwest::get(&registry_addr).await {
         Ok(res) => res,
         Err(err) => {
             return Err(DataError::RequestError { what: "registry", address: registry_addr, err });
@@ -192,12 +198,18 @@ pub async fn download_data(
     };
 
     // Send a reqwest
-    let res = match client.get(&download_addr).send().await {
-        Ok(res) => res,
-        Err(err) => {
-            return Err(DataError::RequestError { what: "download", address: download_addr, err });
-        },
-    };
+    let res = client
+        .get(&download_addr)
+        .json(&DownloadAssetRequest {
+            use_case,
+            workflow: serde_json::to_value(workflow)
+                .map_err(|err| DataError::WorkflowSerializeError { context: String::from("creating download asset request"), err })?,
+            task: None,
+        })
+        .send()
+        .await
+        .map_err(|err| DataError::RequestError { what: "download", address: download_addr.clone(), err })?;
+
     if !res.status().is_success() {
         return Err(DataError::RequestFailure { address: download_addr, code: res.status(), message: res.text().await.ok() });
     }
@@ -216,7 +228,7 @@ pub async fn download_data(
         let mut stream = res.bytes_stream();
         while let Some(chunk) = stream.next().await {
             // Unwrap the chunk
-            let mut chunk: Bytes = match chunk {
+            let mut chunk = match chunk {
                 Ok(chunk) => chunk,
                 Err(err) => {
                     return Err(DataError::DownloadStreamError { address: download_addr, err });
@@ -387,7 +399,14 @@ pub async fn build(file: impl AsRef<Path>, workdir: impl AsRef<Path>, _keep_file
 ///
 /// # Errors
 /// This function may error if the download failed for any reason.
-pub async fn download(names: Vec<String>, locs: Vec<String>, proxy_addr: &Option<String>, force: bool) -> Result<(), DataError> {
+pub async fn download(
+    names: Vec<String>,
+    locs: Vec<String>,
+    use_case: String,
+    user: String,
+    proxy_addr: &Option<String>,
+    force: bool,
+) -> Result<(), DataError> {
     // Parse the locations into a map
     let mut locations: HashMap<String, String> = HashMap::with_capacity(locs.len());
     for l in locs {
@@ -483,7 +502,13 @@ pub async fn download(names: Vec<String>, locs: Vec<String>, proxy_addr: &Option
         let access: AccessKind = match info.access.get(LOCALHOST) {
             Some(access) => access.clone(),
             None => {
-                // Attempt to download it instead
+                let mut workflow = Workflow::with_random_id(
+                    Default::default(),
+                    vec![Edge::Return { result: HashSet::from([DataName::Data(name.clone())]) }],
+                    Default::default(),
+                );
+
+                *Arc::get_mut(&mut workflow.user).expect("Could not set user on workflow") = Some(user.clone());
 
                 // Get the certificate path
                 let certs_dir: PathBuf = match InstanceInfo::get_active_name() {
@@ -507,7 +532,9 @@ pub async fn download(names: Vec<String>, locs: Vec<String>, proxy_addr: &Option
                 };
 
                 // Run the download
-                match download_data(instance_info.api.to_string(), proxy_addr, certs_dir, data_dir, &name, &access).await? {
+                match download_data(instance_info.api.to_string(), proxy_addr, certs_dir, data_dir, use_case.clone(), &name, workflow, &access)
+                    .await?
+                {
                     Some(access) => access,
                     None => {
                         return Err(DataError::UnavailableDataset { name, locs: info.access.keys().cloned().collect() });

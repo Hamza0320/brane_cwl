@@ -17,7 +17,6 @@
 //
 
 use std::cell::{RefCell, RefMut};
-use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::fmt::Write as _;
 use std::io::Write;
@@ -32,15 +31,14 @@ use brane_ast::ast::Workflow;
 use brane_ast::state::CompileState;
 use brane_ast::traversals::print::ast;
 use brane_ast::{CompileResult, Error as AstError, ParserOptions, Warning as AstWarning};
-use brane_cli::data::download_data;
 use brane_cli::run::{InstanceVmState, initialize_instance, run_instance};
 use brane_exe::FullValue;
 use brane_tsk::api::{get_data_index, get_package_index};
 use console::style;
 use humanlog::{DebugMode, HumanLogger};
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, trace};
 use parking_lot::{Mutex, MutexGuard};
-use specifications::data::{AccessKind, DataIndex};
+use specifications::data::DataIndex;
 use specifications::package::PackageIndex;
 use tokio::runtime::{Builder, Runtime};
 
@@ -1214,10 +1212,12 @@ pub struct VirtualMachine {
     /// The tokio runtime handle to use for this VM
     runtime: Arc<Runtime>,
     /// The endpoint to connect to for downloading registries
+    #[allow(dead_code)]
     api_endpoint: String,
     /// The endpoint to connect to when running.
     drv_endpoint: String,
     /// The directory of certificates to use.
+    #[allow(dead_code)]
     certs_dir: String,
     /// The state of everything we need to know about the virtual machine
     state: InstanceVmState<BytesHandle, BytesHandle>,

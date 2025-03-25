@@ -122,11 +122,7 @@ pub async fn assert_asset_permission(
 
         // Assert that they match with the request
         if client_name != at {
-            return Err(AuthorizeError::AuthorizationUserMismatch {
-                who: format!("task {pc} executor"),
-                authenticated: client_name.into(),
-                workflow: at.clone(),
-            });
+            return Err(AuthorizeError::AuthorizationUserMismatch { who: at.clone(), authenticated: client_name.into(), workflow: workflow.clone() });
         }
         if !input.contains_key(&data_name) {
             return Err(AuthorizeError::AuthorizationDataMismatch { pc, data_name });
@@ -137,9 +133,9 @@ pub async fn assert_asset_permission(
             Some(user) => {
                 if client_name != user {
                     return Err(AuthorizeError::AuthorizationUserMismatch {
-                        who: "end user".into(),
+                        who: user.to_string(),
                         authenticated: client_name.into(),
-                        workflow: user.clone(),
+                        workflow: workflow.clone(),
                     });
                 }
             },
