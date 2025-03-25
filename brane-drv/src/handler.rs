@@ -363,8 +363,8 @@ impl DriverService for DriverHandler {
                     // Serialize the value
                     let sres: String = match serde_json::to_string(&res) {
                         Ok(sres) => sres,
-                        Err(err) => {
-                            fatal_err!(tx, Status::internal, err);
+                        Err(source) => {
+                            fatal_err!(tx, Status::internal, source);
                         },
                     };
 
@@ -377,7 +377,7 @@ impl DriverService for DriverHandler {
                         error!("{}", trace!(("Failed to send workflow result back to client"), err));
                     }
                 },
-                Err(RemoteVmError::PlanError { err: PlanError::CheckerDenied { domain, reasons } }) => {
+                Err(RemoteVmError::PlanError { source: PlanError::CheckerDenied { domain, reasons } }) => {
                     fatal_err!(
                         tx,
                         Status::permission_denied(format!(
@@ -390,8 +390,8 @@ impl DriverService for DriverHandler {
                         ))
                     );
                 },
-                Err(err) => {
-                    fatal_err!(tx, Status::internal, err);
+                Err(source) => {
+                    fatal_err!(tx, Status::internal, source);
                 },
             };
         });

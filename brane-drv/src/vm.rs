@@ -128,36 +128,27 @@ impl VmPlugin for InstancePlugin {
         };
 
         // Create the client
-        let mut client: working_grpc::JobServiceClient = match proxy.connect_to_job(delegate_address.to_string()).await {
-            Ok(result) => match result {
-                Ok(client) => client,
-                Err(err) => {
-                    return Err(PreprocessError::GrpcConnectError { endpoint: delegate_address, err });
-                },
-            },
-            Err(err) => {
-                return Err(PreprocessError::ProxyError { err: Box::new(err) });
-            },
-        };
+        let mut client: working_grpc::JobServiceClient = proxy
+            .connect_to_job(delegate_address.to_string())
+            .await
+            .map_err(|source| PreprocessError::ProxyError { source: Box::new(source) })?
+            .map_err(|source| PreprocessError::GrpcConnectError { endpoint: delegate_address.clone(), source })?;
 
         // Send the request to the job node
-        let response: Response<working_grpc::PreprocessReply> = match client.preprocess(message).await {
-            Ok(response) => response,
-            Err(err) => {
-                return Err(PreprocessError::GrpcRequestError { what: "PreprocessRequest", endpoint: delegate_address, err });
-            },
-        };
+        let response: Response<working_grpc::PreprocessReply> = client
+            .preprocess(message)
+            .await
+            .map_err(|source| PreprocessError::GrpcRequestError { what: "PreprocessRequest", endpoint: delegate_address.clone(), source })?;
         let result: working_grpc::PreprocessReply = response.into_inner();
         job.stop();
 
         // If it was, attempt to deserialize the accesskind
         let par = prof.time("Result parsing");
-        let access: AccessKind = match serde_json::from_str(&result.access) {
-            Ok(access) => access,
-            Err(err) => {
-                return Err(PreprocessError::AccessKindParseError { endpoint: delegate_address, raw: result.access, err });
-            },
-        };
+        let access: AccessKind = serde_json::from_str(&result.access).map_err(|source| PreprocessError::AccessKindParseError {
+            endpoint: delegate_address.clone(),
+            raw: result.access,
+            source,
+        })?;
         par.stop();
 
         // Done
@@ -216,25 +207,17 @@ impl VmPlugin for InstancePlugin {
         };
 
         // Create the client
-        let mut client: working_grpc::JobServiceClient = match proxy.connect_to_job(delegate_address.to_string()).await {
-            Ok(result) => match result {
-                Ok(client) => client,
-                Err(err) => {
-                    return Err(ExecuteError::GrpcConnectError { endpoint: delegate_address, err });
-                },
-            },
-            Err(err) => {
-                return Err(ExecuteError::ProxyError { err: Box::new(err) });
-            },
-        };
+        let mut client: working_grpc::JobServiceClient = proxy
+            .connect_to_job(delegate_address.to_string())
+            .await
+            .map_err(|source| ExecuteError::ProxyError { source: Box::new(source) })?
+            .map_err(|source| ExecuteError::GrpcConnectError { endpoint: delegate_address.clone(), source })?;
 
         // Send the request to the job node
-        let response: Response<Streaming<working_grpc::ExecuteReply>> = match client.execute(message).await {
-            Ok(response) => response,
-            Err(err) => {
-                return Err(ExecuteError::GrpcRequestError { what: "ExecuteRequest", endpoint: delegate_address, err });
-            },
-        };
+        let response: Response<Streaming<working_grpc::ExecuteReply>> = client
+            .execute(message)
+            .await
+            .map_err(|source| ExecuteError::GrpcRequestError { what: "ExecuteRequest", endpoint: delegate_address.clone(), source })?;
         let mut stream: Streaming<working_grpc::ExecuteReply> = response.into_inner();
 
         // Now we tick off incoming messages
@@ -376,17 +359,12 @@ impl VmPlugin for InstancePlugin {
         job.stop();
 
         // Now we simply match on the value to see if we got something
-        let result: FullValue = match result {
-            Ok(result) => result,
-            Err(err) => {
-                return Err(ExecuteError::ExecuteError {
-                    endpoint: delegate_address,
-                    name:     info.name.into(),
-                    status:   state.into(),
-                    err:      StringError(err),
-                });
-            },
-        };
+        let result: FullValue = result.map_err(|source| ExecuteError::ExecuteError {
+            endpoint: delegate_address,
+            name:     info.name.into(),
+            status:   state.into(),
+            source:   StringError(source),
+        })?;
 
         // That's it!
         debug!("Task '{}' result: {:?}", info.name, result);
@@ -410,19 +388,16 @@ impl VmPlugin for InstancePlugin {
         };
 
         // Write stdout to the tx
-        if let Err(err) = tx
-            .send(Ok(driving_grpc::ExecuteReply {
-                stdout: Some(format!("{}{}", text, if newline { "\n" } else { "" })),
-                stderr: None,
-                debug:  None,
-                value:  None,
+        tx.send(Ok(driving_grpc::ExecuteReply {
+            stdout: Some(format!("{}{}", text, if newline { "\n" } else { "" })),
+            stderr: None,
+            debug:  None,
+            value:  None,
 
-                close: false,
-            }))
-            .await
-        {
-            return Err(StdoutError::TxWriteError { err });
-        }
+            close: false,
+        }))
+        .await
+        .map_err(|source| StdoutError::TxWriteError { source })?;
 
         // Done
         Ok(())
@@ -479,25 +454,18 @@ impl VmPlugin for InstancePlugin {
         let message: working_grpc::CommitRequest = working_grpc::CommitRequest { result_name: name.into(), data_name: data_name.into() };
 
         // Create the client
-        let mut client: working_grpc::JobServiceClient = match proxy.connect_to_job(delegate_address.to_string()).await {
-            Ok(result) => match result {
-                Ok(client) => client,
-                Err(err) => {
-                    return Err(CommitError::GrpcConnectError { endpoint: delegate_address, err });
-                },
-            },
-            Err(err) => {
-                return Err(CommitError::ProxyError { err: Box::new(err) });
-            },
-        };
+        let mut client: working_grpc::JobServiceClient = proxy
+            .connect_to_job(delegate_address.to_string())
+            .await
+            .map_err(|source| CommitError::ProxyError { source: Box::new(source) })?
+            .map_err(|source| CommitError::GrpcConnectError { endpoint: delegate_address.clone(), source })?;
 
         // Send the request to the job node
-        let response: Response<working_grpc::CommitReply> = match client.commit(message).await {
-            Ok(response) => response,
-            Err(err) => {
-                return Err(CommitError::GrpcRequestError { what: "CommitRequest", endpoint: delegate_address, err });
-            },
-        };
+        let response: Response<working_grpc::CommitReply> = client.commit(message).await.map_err(|source| CommitError::GrpcRequestError {
+            what: "CommitRequest",
+            endpoint: delegate_address.clone(),
+            source,
+        })?;
         let _: working_grpc::CommitReply = response.into_inner();
         job.stop();
 
@@ -567,20 +535,20 @@ impl InstanceVm {
                         return (self, Err(Error::IllegalNodeConfig { path, got: cfg.node.variant().to_string() }));
                     },
                 },
-                Err(err) => {
+                Err(source) => {
                     let path: PathBuf = global.node_config_path.clone();
                     drop(global);
-                    return (self, Err(Error::NodeConfigLoad { path, err }));
+                    return (self, Err(Error::NodeConfigLoad { path, source }));
                 },
             };
 
             debug!("Loading infra file '{}'...", central_cfg.paths.infra.display());
             let infra: InfraFile = match InfraFile::from_path(&central_cfg.paths.infra) {
                 Ok(infra) => infra,
-                Err(err) => {
+                Err(source) => {
                     let path: PathBuf = global.node_config_path.clone();
                     drop(global);
-                    return (self, Err(Error::InfraFileLoad { path, err }));
+                    return (self, Err(Error::InfraFileLoad { path, source }));
                 },
             };
 
@@ -597,8 +565,8 @@ impl InstanceVm {
         debug!("Planning workflow on Kafka planner...");
         let plan: Workflow = match prof.nest_fut("planning (brane-drv)", |scope| InstancePlanner::plan(&plr_addr, id, workflow, scope)).await {
             Ok(plan) => plan,
-            Err(err) => {
-                return (self, Err(Error::PlanError { err }));
+            Err(source) => {
+                return (self, Err(Error::PlanError { source }));
             },
         };
 
@@ -630,8 +598,8 @@ impl InstanceVm {
         // Match the result to potentially error
         let value: FullValue = match result {
             Ok(value) => value,
-            Err(err) => {
-                return (this, Err(Error::ExecError { err }));
+            Err(source) => {
+                return (this, Err(Error::ExecError { source }));
             },
         };
 

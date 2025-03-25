@@ -26,14 +26,14 @@ use crate::errors::BuildError;
 /// Wrapper around write! that returns BuildErrors instead of standard format errors.
 macro_rules! write_build {
     ($($e:expr),*) => {
-        write!($($e),*).map_err(|err| BuildError::DockerfileStrWriteError{ err })
+        write!($($e),*).map_err(|source| BuildError::DockerfileStrWriteError{ source })
     }
 }
 
 /// Wrapper around writeln! that returns BuildErrors instead of standard format errors.
 macro_rules! writeln_build {
     ($($e:expr),*) => {
-        writeln!($($e),*).map_err(|err| BuildError::DockerfileStrWriteError{ err })
+        writeln!($($e),*).map_err(|source| BuildError::DockerfileStrWriteError{ source })
     }
 }
 
@@ -66,12 +66,12 @@ pub fn clean_directory(package_dir: &Path, files: Vec<&str>) {
     for file in files {
         let file = package_dir.join(file);
         if file.is_file() {
-            if let Err(err) = fs::remove_file(&file) {
-                warn!("{}", BuildError::FileCleanupError { path: file, err });
+            if let Err(source) = fs::remove_file(&file) {
+                warn!("{}", BuildError::FileCleanupError { path: file, source });
             }
         } else if file.is_dir() {
-            if let Err(err) = fs::remove_dir_all(&file) {
-                warn!("{}", BuildError::DirCleanupError { path: file, err });
+            if let Err(source) = fs::remove_dir_all(&file) {
+                warn!("{}", BuildError::DirCleanupError { path: file, source });
             }
         } else {
             warn!("To-be-cleaned file '{}' is neither a file nor a directory", file.display());
@@ -97,12 +97,8 @@ pub fn build_docker_image<P: AsRef<Path>>(arch: Arch, package_dir: P, tag: Strin
     // Prepare the command to check for buildx (and launch the buildx image, presumably)
     let mut command = Command::new("docker");
     command.arg("buildx");
-    let buildx = match command.output() {
-        Ok(buildx) => buildx,
-        Err(err) => {
-            return Err(BuildError::BuildKitLaunchError { command: format!("{command:?}"), err });
-        },
-    };
+    let buildx = command.output().map_err(|source| BuildError::BuildKitLaunchError { command: format!("{command:?}"), source })?;
+
     // Check if it was successfull
     if !buildx.status.success() {
         return Err(BuildError::BuildKitError {
@@ -129,12 +125,8 @@ pub fn build_docker_image<P: AsRef<Path>>(arch: Arch, package_dir: P, tag: Strin
     command.arg(format!("JUICEFS_ARCH={}", arch.juicefs()));
     command.arg(".");
     command.current_dir(package_dir);
-    let output = match command.status() {
-        Ok(output) => output,
-        Err(err) => {
-            return Err(BuildError::ImageBuildLaunchError { command: format!("{command:?}"), err });
-        },
-    };
+    let output = command.status().map_err(|source| BuildError::ImageBuildLaunchError { command: format!("{command:?}"), source })?;
+
     // Check if it was successfull
     if !output.success() {
         return Err(BuildError::ImageBuildError { command: format!("{command:?}"), code: output.code().unwrap_or(-1) });

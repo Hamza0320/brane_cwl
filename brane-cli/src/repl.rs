@@ -172,15 +172,9 @@ pub async fn start(
     };
 
     // Get the history file, clearing it if necessary
-    if let Err(err) = ensure_config_dir(true) {
-        return Err(Error::ConfigDirCreateError { err });
-    };
-    let history_file = match get_history_file() {
-        Ok(file) => file,
-        Err(err) => {
-            return Err(Error::HistoryFileError { err });
-        },
-    };
+    ensure_config_dir(true).map_err(|source| Error::ConfigDirCreateError { source })?;
+    let history_file = get_history_file().map_err(|source| Error::HistoryFileError { source })?;
+
     if clear && history_file.exists() {
         if let Err(err) = fs::remove_file(&history_file) {
             warn!("Could not clear REPL history: {}", err);
@@ -188,12 +182,7 @@ pub async fn start(
     }
 
     // Create the REPL
-    let mut rl = match Editor::with_config(config) {
-        Ok(rl) => rl,
-        Err(err) => {
-            return Err(Error::EditorCreateError { err });
-        },
-    };
+    let mut rl = Editor::with_config(config).map_err(|source| Error::EditorCreateError { source })?;
     rl.set_helper(Some(repl_helper));
     if let Err(err) = rl.load_history(&history_file) {
         warn!("Could not load REPL history from '{}': {}", history_file.display(), err);
@@ -206,12 +195,7 @@ pub async fn start(
     println!("Welcome to the Brane REPL, press Ctrl+D to exit.\n");
     if remote {
         // Open the login file to find the remote location
-        let info: InstanceInfo = match InstanceInfo::from_active_path() {
-            Ok(info) => info,
-            Err(err) => {
-                return Err(Error::InstanceInfoError { err });
-            },
-        };
+        let info: InstanceInfo = InstanceInfo::from_active_path().map_err(|source| Error::InstanceInfoError { source })?;
 
         // Run the thing
         remote_repl(&mut rl, info, use_case, proxy_addr, attach, options, profile).await?;
@@ -257,7 +241,7 @@ async fn remote_repl(
     // First we initialize the remote thing
     let mut state: InstanceVmState<Stdout, Stderr> = initialize_instance_vm(&api_address, &drv_address, Some(info.user.clone()), attach, options)
         .await
-        .map_err(|err| Error::InitializeError { what: "remote instance client", err })?;
+        .map_err(|source| Error::InitializeError { what: "remote instance client", source })?;
 
     // Next, enter the L in REPL
     let mut count: u32 = 1;
@@ -291,7 +275,7 @@ async fn remote_repl(
                     let pindex = state.pindex.lock();
                     let dindex = state.dindex.lock();
                     Workflow::from_source(&mut state.state, &mut state.source, &pindex, &dindex, None, &state.options, "<test task>", line)
-                        .map_err(|err| Error::RunError { what: "repl", err: run::Error::CompileError(err) })?
+                        .map_err(|source| Error::RunError { what: "repl", source: run::Error::CompileError(source) })?
                 };
 
                 let snippet = Snippet { lines: line_count, workflow };
@@ -302,8 +286,8 @@ async fn remote_repl(
                 };
 
                 // Then, we collect and process the result
-                if let Err(err) = process_instance_result(&api_address, &proxy_addr, use_case.clone(), snippet.workflow, res).await {
-                    error!("{}", Error::ProcessError { what: "remote instance VM", err });
+                if let Err(source) = process_instance_result(&api_address, &proxy_addr, use_case.clone(), snippet.workflow, res).await {
+                    error!("{}", Error::ProcessError { what: "remote instance VM", source });
                     continue;
                 }
 
@@ -348,12 +332,8 @@ async fn local_repl(
     keep_containers: bool,
 ) -> Result<(), Error> {
     // First we initialize the remote thing
-    let mut state: OfflineVmState = match initialize_offline_vm(parse_opts, docker_opts, keep_containers) {
-        Ok(state) => state,
-        Err(err) => {
-            return Err(Error::InitializeError { what: "offline VM", err });
-        },
-    };
+    let mut state: OfflineVmState =
+        initialize_offline_vm(parse_opts, docker_opts, keep_containers).map_err(|source| Error::InitializeError { what: "offline VM", source })?;
 
     // With the VM setup, enter the L in the REPL
     let mut count: u32 = 1;
@@ -394,21 +374,16 @@ async fn local_repl(
                     "<test task>",
                     line.clone(),
                 )
-                .map_err(|err| Error::RunError { what: "local repl", err: run::Error::CompileError(err) })?;
+                .map_err(|source| Error::RunError { what: "local repl", source: run::Error::CompileError(source) })?;
 
                 let snippet = Snippet { lines: line_count, workflow };
 
                 // Next, we run the VM (one snippet only ayway)
-                let res: FullValue = match run_offline_vm(&mut state, snippet).await {
-                    Ok(res) => res,
-                    Err(err) => {
-                        return Err(Error::RunError { what: "offline VM", err });
-                    },
-                };
+                let res: FullValue = run_offline_vm(&mut state, snippet).await.map_err(|source| Error::RunError { what: "offline VM", source })?;
 
                 // Then, we collect and process the result
-                if let Err(err) = process_offline_result(res) {
-                    error!("{}", Error::ProcessError { what: "offline VM", err });
+                if let Err(source) = process_offline_result(res) {
+                    error!("{}", Error::ProcessError { what: "offline VM", source });
                     continue;
                 }
 
@@ -423,8 +398,8 @@ async fn local_repl(
             Err(ReadlineError::Eof) => {
                 break;
             },
-            Err(err) => {
-                error!("Failed to get new line: {}", err);
+            Err(source) => {
+                error!("Failed to get new line: {source}");
                 break;
             },
         }

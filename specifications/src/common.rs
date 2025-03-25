@@ -205,14 +205,11 @@ impl From<()> for Value {
     fn from(_: ()) -> Self { Value::Unit }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("Value does not contain a {what}")]
 pub struct CastError {
     what: &'static str,
 }
-impl Display for CastError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result { write!(f, "Value does not contain a {}", self.what) }
-}
-impl std::error::Error for CastError {}
 
 impl Value {
     pub fn from_json(value: &JValue) -> Self {

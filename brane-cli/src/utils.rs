@@ -12,8 +12,6 @@
 //!   Contains useful utilities used throughout the brane-cli package.
 //
 
-use std::error::Error;
-use std::fmt::{Display, Formatter, Result as FResult};
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -27,38 +25,22 @@ use crate::errors::UtilError;
 
 /***** HELPER ENUMS *****/
 /// If a dependency is not met, this enum lists which one and why not.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum DependencyError {
     /// Docker cannot be reached
+    #[error("Local Docker instance cannot be reached (is Docker installed and running?)")]
     DockerNotInstalled,
     /// Docker has a too low version
+    #[error("Docker version is {got}, but Brane requires version {expected} or later")]
     DockerMinNotMet { got: Version, expected: Version },
 
     /// The Buildkit plugin is not installed for Docker
+    #[error("Local Docker instance does not have the Buildkit plugin installed")]
     BuildkitNotInstalled,
     /// The Buildkit plugin has an incorrect version
+    #[error("Buildkit plugin for Docker version is {got}, but Brane requires version {expected} or later")]
     BuildKitMinNotMet { got: Version, expected: Version },
 }
-impl Display for DependencyError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        match self {
-            DependencyError::DockerNotInstalled => write!(f, "Local Docker instance cannot be reached (is Docker installed and running?)"),
-            DependencyError::DockerMinNotMet { got, expected } => {
-                write!(f, "Docker version is {got}, but Brane requires version {expected} or later")
-            },
-
-            DependencyError::BuildkitNotInstalled => write!(f, "Local Docker instance does not have the Buildkit plugin installed"),
-            DependencyError::BuildKitMinNotMet { got, expected } => {
-                write!(f, "Buildkit plugin for Docker version is {got}, but Brane requires version {expected} or later")
-            },
-        }
-    }
-}
-impl Error for DependencyError {}
-
-
-
-
 
 /***** UTILITIES *****/
 /// **Edited: Now returning UtilErrors.**
@@ -87,22 +69,12 @@ pub async fn check_dependencies() -> Result<Result<(), DependencyError>, UtilErr
 /// A PathBuf pointing to what we think is the package file, or else a CliError if we could not determine it or something went wrong.
 pub fn determine_file(dir: &Path) -> Result<PathBuf, UtilError> {
     // Open an iterator over the directory's files
-    let files = match fs::read_dir(dir) {
-        Ok(files) => files,
-        Err(err) => {
-            return Err(UtilError::DirectoryReadError { dir: dir.to_path_buf(), err });
-        },
-    };
+    let files = fs::read_dir(dir).map_err(|source| UtilError::DirectoryReadError { dir: dir.to_path_buf(), source })?;
 
     // Iterate through them
     for file in files {
         // Make sure this file is valid
-        let file = match file {
-            Ok(file) => file,
-            Err(err) => {
-                return Err(UtilError::DirectoryReadError { dir: dir.to_path_buf(), err });
-            },
-        };
+        let file = file.map_err(|source| UtilError::DirectoryReadError { dir: dir.to_path_buf(), source })?;
 
         // Compare the filename with anything we know
         let file_name = String::from(file.file_name().to_string_lossy()).to_lowercase();
@@ -149,17 +121,10 @@ pub fn determine_kind(path: &Path) -> Result<PackageKind, UtilError> {
     let mut file_content = String::new();
     {
         // Open the file
-        let mut handle = match File::open(path) {
-            Ok(handle) => handle,
-            Err(err) => {
-                return Err(UtilError::PackageFileOpenError { file: path.to_path_buf(), err });
-            },
-        };
+        let mut handle = File::open(path).map_err(|source| UtilError::PackageFileOpenError { file: path.to_path_buf(), source })?;
 
         // Read the entire file to the string
-        if let Err(err) = handle.read_to_string(&mut file_content) {
-            return Err(UtilError::PackageFileReadError { file: path.to_path_buf(), err });
-        };
+        handle.read_to_string(&mut file_content).map_err(|source| UtilError::PackageFileReadError { file: path.to_path_buf(), source })?;
     }
 
     // Check if the content contains a keywords that allow us to say which package it is
@@ -181,12 +146,7 @@ pub fn determine_kind(path: &Path) -> Result<PackageKind, UtilError> {
 /// The path of the Brane configuration directory if successful, or a UtilError otherwise.
 pub fn get_config_dir() -> Result<PathBuf, UtilError> {
     // Try to get the user directory
-    let user = match dirs::config_dir() {
-        Some(user) => user,
-        None => {
-            return Err(UtilError::UserConfigDirNotFound);
-        },
-    };
+    let user = dirs::config_dir().ok_or_else(|| UtilError::UserConfigDirNotFound)?;
 
     // Simply append Brane's path and return
     Ok(user.join("brane"))
@@ -207,9 +167,7 @@ pub fn ensure_config_dir(create: bool) -> Result<PathBuf, UtilError> {
     if !config_dir.exists() {
         // Either create it if told to do so, or error
         if create {
-            if let Err(err) = fs::create_dir_all(&config_dir) {
-                return Err(UtilError::BraneConfigDirCreateError { path: config_dir, err });
-            }
+            fs::create_dir_all(&config_dir).map_err(|source| UtilError::BraneConfigDirCreateError { path: config_dir.clone(), source })?;
         } else {
             return Err(UtilError::BraneConfigDirNotFound { path: config_dir });
         }
@@ -252,9 +210,7 @@ pub fn ensure_history_file(create: bool) -> Result<PathBuf, UtilError> {
             ensure_config_dir(create)?;
 
             // Now create the file
-            if let Err(err) = File::create(&history_file) {
-                return Err(UtilError::HistoryFileCreateError { path: history_file, err });
-            }
+            File::create(&history_file).map_err(|source| UtilError::HistoryFileCreateError { path: history_file.clone(), source })?;
         } else {
             return Err(UtilError::HistoryFileNotFound { path: history_file });
         }
@@ -275,12 +231,7 @@ pub fn ensure_history_file(create: bool) -> Result<PathBuf, UtilError> {
 /// A PathBuf with the absolute path that is guaranteed to exist, or an UtilError otherwise.
 pub fn get_data_dir() -> Result<PathBuf, UtilError> {
     // Try to get the user directory
-    let user = match dirs::data_local_dir() {
-        Some(user) => user,
-        None => {
-            return Err(UtilError::UserLocalDataDirNotFound);
-        },
-    };
+    let user = dirs::data_local_dir().ok_or_else(|| UtilError::UserLocalDataDirNotFound)?;
 
     // Join the Brane directory and done
     Ok(user.join("brane"))
@@ -301,9 +252,7 @@ pub fn ensure_data_dir(create: bool) -> Result<PathBuf, UtilError> {
     if !data_dir.exists() {
         // Either create it if told to do so, or error
         if create {
-            if let Err(err) = fs::create_dir_all(&data_dir) {
-                return Err(UtilError::BraneDataDirCreateError { path: data_dir, err });
-            }
+            fs::create_dir_all(&data_dir).map_err(|source| UtilError::BraneDataDirCreateError { path: data_dir.clone(), source })?;
         } else {
             return Err(UtilError::BraneDataDirNotFound { path: data_dir });
         }
@@ -349,9 +298,7 @@ pub fn ensure_packages_dir(create: bool) -> Result<PathBuf, UtilError> {
             ensure_data_dir(create)?;
 
             // Now create the directory
-            if let Err(err) = fs::create_dir(&packages_dir) {
-                return Err(UtilError::BranePackageDirCreateError { path: packages_dir, err });
-            }
+            fs::create_dir(&packages_dir).map_err(|source| UtilError::BranePackageDirCreateError { path: packages_dir.clone(), source })?;
         } else {
             return Err(UtilError::BranePackageDirNotFound { path: packages_dir });
         }
@@ -399,9 +346,7 @@ pub fn ensure_datasets_dir(create: bool) -> Result<PathBuf, UtilError> {
         if create {
             // Make sure the parent directory exists, then create this directory
             ensure_data_dir(create)?;
-            if let Err(err) = fs::create_dir(&data_dir) {
-                return Err(UtilError::BraneDatasetsDirCreateError { path: data_dir, err });
-            }
+            fs::create_dir(&data_dir).map_err(|source| UtilError::BraneDatasetsDirCreateError { path: data_dir.clone(), source })?;
         } else {
             return Err(UtilError::BraneDatasetsDirNotFound { path: data_dir });
         }
@@ -438,12 +383,7 @@ pub fn get_package_dir(name: &str, version: Option<&Version>) -> Result<PathBuf,
     let version = version.unwrap();
     let version = if version.is_latest() {
         // Get the list of versions
-        let mut versions = match brane_tsk::local::get_package_versions(name, &package_dir) {
-            Ok(versions) => versions,
-            Err(err) => {
-                return Err(UtilError::VersionsError { err });
-            },
-        };
+        let mut versions = brane_tsk::local::get_package_versions(name, &package_dir).map_err(|source| UtilError::VersionsError { source })?;
 
         // Sort the versions and return the last one
         versions.sort();
@@ -483,9 +423,12 @@ pub fn ensure_package_dir(name: &str, version: Option<&Version>, create: bool) -
                     ensure_packages_dir(create)?;
 
                     // Now create the directory
-                    if let Err(err) = fs::create_dir_all(&package_dir) {
-                        return Err(UtilError::VersionDirCreateError { package: name.to_string(), version: *version, path: package_dir, err });
-                    }
+                    fs::create_dir_all(&package_dir).map_err(|source| UtilError::VersionDirCreateError {
+                        package: name.to_string(),
+                        version: *version,
+                        path: package_dir.clone(),
+                        source,
+                    })?;
                 } else {
                     return Err(UtilError::VersionDirNotFound { package: name.to_string(), version: *version, path: package_dir });
                 }
@@ -498,9 +441,11 @@ pub fn ensure_package_dir(name: &str, version: Option<&Version>, create: bool) -
                     ensure_packages_dir(create)?;
 
                     // Now create the directory
-                    if let Err(err) = fs::create_dir_all(&package_dir) {
-                        return Err(UtilError::PackageDirCreateError { package: name.to_string(), path: package_dir, err });
-                    }
+                    fs::create_dir_all(&package_dir).map_err(|source| UtilError::PackageDirCreateError {
+                        package: name.to_string(),
+                        path: package_dir.clone(),
+                        source,
+                    })?;
                 } else {
                     return Err(UtilError::PackageDirNotFound { package: name.to_string(), path: package_dir });
                 }
@@ -561,9 +506,11 @@ pub fn ensure_dataset_dir<S: AsRef<str>>(name: S, create: bool) -> Result<PathBu
             ensure_datasets_dir(create)?;
 
             // Now create the directory
-            if let Err(err) = fs::create_dir_all(&data_dir) {
-                return Err(UtilError::BraneDatasetDirCreateError { name: name.as_ref().into(), path: data_dir, err });
-            }
+            fs::create_dir_all(&data_dir).map_err(|source| UtilError::BraneDatasetDirCreateError {
+                name: name.as_ref().into(),
+                path: data_dir.clone(),
+                source,
+            })?;
         } else {
             return Err(UtilError::BraneDatasetDirNotFound { name: name.as_ref().into(), path: data_dir });
         }
@@ -612,9 +559,7 @@ pub fn ensure_instances_dir(create: bool) -> Result<PathBuf, UtilError> {
             ensure_config_dir(create)?;
 
             // Now create our directory
-            if let Err(err) = fs::create_dir(&instances_dir) {
-                return Err(UtilError::BraneInstancesDirCreateError { path: instances_dir, err });
-            }
+            fs::create_dir(&instances_dir).map_err(|source| UtilError::BraneInstancesDirCreateError { path: instances_dir.clone(), source })?;
         } else {
             return Err(UtilError::BraneInstancesDirNotFound { path: instances_dir });
         }
@@ -669,9 +614,11 @@ pub fn ensure_instance_dir(name: impl AsRef<str>, create: bool) -> Result<PathBu
             ensure_instances_dir(create)?;
 
             // Now create our directory
-            if let Err(err) = fs::create_dir(&instance_dir) {
-                return Err(UtilError::BraneInstanceDirCreateError { path: instance_dir, name: name.into(), err });
-            }
+            fs::create_dir(&instance_dir).map_err(|source| UtilError::BraneInstanceDirCreateError {
+                path: instance_dir.clone(),
+                name: name.into(),
+                source,
+            })?;
         } else {
             return Err(UtilError::BraneInstanceDirNotFound { path: instance_dir, name: name.into() });
         }

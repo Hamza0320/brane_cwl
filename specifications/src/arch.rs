@@ -12,7 +12,6 @@
  *   Defines enums and parsers to work with multiple architectures.
 **/
 
-use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};
 use std::hash::Hash;
 use std::str::FromStr;
@@ -22,23 +21,12 @@ use serde::{Deserialize, Serialize};
 
 /***** ERRORS *****/
 /// Defines the error that may occur when parsing architectures
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ArchError {
     /// Could not deserialize the given string
+    #[error("Unknown architecture '{raw}'")]
     UnknownArchitecture { raw: String },
 }
-impl Display for ArchError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use ArchError::*;
-        match self {
-            UnknownArchitecture { raw } => write!(f, "Unknown architecture '{raw}'"),
-        }
-    }
-}
-impl Error for ArchError {}
-
-
-
 
 
 /***** AUXILLARY *****/

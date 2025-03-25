@@ -32,18 +32,11 @@ pub fn decode_base64(raw: impl AsRef<str>) -> Result<String, ExecuteError> {
     let raw: &str = raw.as_ref();
 
     // First, try to decode the raw base64
-    let input: Vec<u8> = match base64::engine::general_purpose::STANDARD.decode(raw) {
-        Ok(bin) => bin,
-        Err(reason) => {
-            return Err(ExecuteError::Base64DecodeError { raw: raw.into(), err: reason });
-        },
-    };
+    let input: Vec<u8> =
+        base64::engine::general_purpose::STANDARD.decode(raw).map_err(|source| ExecuteError::Base64DecodeError { raw: raw.into(), source })?;
 
     // Next, try to decode the binary as UTF-8
-    match String::from_utf8(input.clone()) {
-        Ok(text) => Ok(text),
-        Err(reason) => Err(ExecuteError::Utf8DecodeError { raw: String::from_utf8_lossy(&input).into(), err: reason }),
-    }
+    String::from_utf8(input.clone()).map_err(|source| ExecuteError::Utf8DecodeError { raw: String::from_utf8_lossy(&input).into(), source })
 
     // We leave JSON for another day
 }

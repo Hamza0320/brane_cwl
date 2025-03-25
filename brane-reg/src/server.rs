@@ -68,20 +68,10 @@ where
     debug!("Loading cryptography...");
     let tls_config: Arc<ServerConfig> = {
         // Load server key pair
-        let (certs, key): (Certificate, PrivateKey) = match load_keypair(server_cert, server_key) {
-            Ok(res) => res,
-            Err(err) => {
-                return Err(Error::KeypairLoadError { err });
-            },
-        };
+        let (certs, key): (Certificate, PrivateKey) = load_keypair(server_cert, server_key).map_err(|source| Error::KeypairLoadError { source })?;
 
         // Load the client certs
-        let client_roots: RootCertStore = match load_certstore(ca_cert) {
-            Ok(res) => res,
-            Err(err) => {
-                return Err(Error::StoreLoadError { err });
-            },
-        };
+        let client_roots: RootCertStore = load_certstore(ca_cert).map_err(|source| Error::StoreLoadError { source })?;
 
         // Finally, create the config itself
         match ServerConfig::builder()
@@ -90,20 +80,15 @@ where
             .with_single_cert(vec![certs], key)
         {
             Ok(config) => Arc::new(config),
-            Err(err) => {
-                return Err(Error::ServerConfigError { err });
+            Err(source) => {
+                return Err(Error::ServerConfigError { source });
             },
         }
     };
 
     // Start a TCP listener
     debug!("Starting TCP server on '{}'...", address);
-    let server: TcpListener = match TcpListener::bind(&address).await {
-        Ok(server) => server,
-        Err(err) => {
-            return Err(Error::ServerBindError { address, err });
-        },
-    };
+    let server: TcpListener = TcpListener::bind(&address).await.map_err(|source| Error::ServerBindError { address, source })?;
 
     // Start a TLS acceptor.
     let acceptor: TlsAcceptor = TlsAcceptor::from(tls_config);

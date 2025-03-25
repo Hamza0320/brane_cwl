@@ -44,12 +44,7 @@ use crate::utils::{ensure_instance_dir, ensure_instances_dir, get_active_instanc
 /// This function errors if, say, the instance link does not exist or was unreadable.
 fn read_active_instance_link() -> Result<String, Error> {
     // Get the active path
-    let link_path: PathBuf = match get_active_instance_link() {
-        Ok(link_path) => link_path,
-        Err(err) => {
-            return Err(Error::ActiveInstancePathError { err });
-        },
-    };
+    let link_path: PathBuf = get_active_instance_link().map_err(|source| Error::ActiveInstancePathError { source })?;
 
     // Assert it exists
     if !link_path.exists() {
@@ -60,10 +55,7 @@ fn read_active_instance_link() -> Result<String, Error> {
     }
 
     // Get the path from it
-    match fs::read_to_string(&link_path) {
-        Ok(name) => Ok(name),
-        Err(err) => Err(Error::ActiveInstanceReadError { path: link_path, err }),
-    }
+    fs::read_to_string(&link_path).map_err(|source| Error::ActiveInstanceReadError { path: link_path, source })
 }
 
 
@@ -111,7 +103,7 @@ impl InstanceInfo {
     pub fn active_instance_exists() -> Result<bool, Error> {
         match get_active_instance_link() {
             Ok(link_path) => Ok(link_path.exists()),
-            Err(err) => Err(Error::ActiveInstancePathError { err }),
+            Err(source) => Err(Error::ActiveInstancePathError { source }),
         }
     }
 
@@ -142,24 +134,14 @@ impl InstanceInfo {
         let path: &Path = path.as_ref();
 
         // Open a file
-        let mut handle: File = match File::open(path) {
-            Ok(handle) => handle,
-            Err(err) => {
-                return Err(Error::InstanceInfoOpenError { path: path.into(), err });
-            },
-        };
+        let mut handle: File = File::open(path).map_err(|source| Error::InstanceInfoOpenError { path: path.into(), source })?;
 
         // Read it to a string
         let mut contents: String = String::new();
-        if let Err(err) = handle.read_to_string(&mut contents) {
-            return Err(Error::InstanceInfoReadError { path: path.into(), err });
-        }
+        handle.read_to_string(&mut contents).map_err(|source| Error::InstanceInfoReadError { path: path.into(), source })?;
 
         // Now parse it
-        match serde_yaml::from_str(&contents) {
-            Ok(info) => Ok(info),
-            Err(err) => Err(Error::InstanceInfoParseError { path: path.into(), err }),
-        }
+        serde_yaml::from_str(&contents).map_err(|source| Error::InstanceInfoParseError { path: path.into(), source })
     }
 
     // /// Writes this InstanceInfo to the active path in the local configuration directory.
@@ -202,26 +184,13 @@ impl InstanceInfo {
         let path: &Path = path.as_ref();
 
         // Serialize ourselves next
-        let sself: String = match serde_yaml::to_string(self) {
-            Ok(sself) => sself,
-            Err(err) => {
-                return Err(Error::InstanceInfoSerializeError { err });
-            },
-        };
+        let sself: String = serde_yaml::to_string(self).map_err(|source| Error::InstanceInfoSerializeError { source })?;
 
         // Open a file to write us to
-        let mut handle: File = match File::create(path) {
-            Ok(handle) => handle,
-            Err(err) => {
-                return Err(Error::InstanceInfoCreateError { path: path.into(), err });
-            },
-        };
+        let mut handle: File = File::create(path).map_err(|source| Error::InstanceInfoCreateError { path: path.into(), source })?;
 
         // Finally write it
-        match write!(handle, "{sself}") {
-            Ok(_) => Ok(()),
-            Err(err) => Err(Error::InstanceInfoWriteError { path: path.into(), err }),
-        }
+        write!(handle, "{sself}").map_err(|source| Error::InstanceInfoWriteError { path: path.into(), source })
     }
 
     /// Computes the name of the active instance and returns it.
@@ -265,7 +234,7 @@ impl InstanceInfo {
     fn get_default_path(name: impl AsRef<str>) -> Result<PathBuf, Error> {
         match ensure_instance_dir(&name, true) {
             Ok(dir) => Ok(dir.join("info.yml")),
-            Err(err) => Err(Error::InstanceDirError { err }),
+            Err(source) => Err(Error::InstanceDirError { source }),
         }
     }
 
@@ -281,10 +250,7 @@ impl InstanceInfo {
     /// This function may error if we failed to get the base config directory, or no such instance exists.
     #[inline]
     pub fn get_instance_path(name: impl AsRef<str>) -> Result<PathBuf, Error> {
-        match ensure_instance_dir(&name, false) {
-            Ok(dir) => Ok(dir),
-            Err(err) => Err(Error::InstanceDirError { err }),
-        }
+        ensure_instance_dir(&name, false).map_err(|source| Error::InstanceDirError { source })
     }
 }
 
@@ -331,21 +297,12 @@ pub async fn add(
     // Attempt to find out if the instance exists
     if !force {
         debug!("Checking if instance already exists...");
-        let instance_path: PathBuf = match get_instance_dir(&name) {
-            Ok(path) => path,
-            Err(err) => {
-                return Err(Error::InstanceDirError { err });
-            },
-        };
+        let instance_path: PathBuf = get_instance_dir(&name).map_err(|source| Error::InstanceDirError { source })?;
+
         if instance_path.exists() {
             debug!("Asking for confirmation...");
             println!("An instance with the name {} already exists. Overwrite?", style(&name).cyan().bold());
-            let consent: bool = match Confirm::new().interact() {
-                Ok(consent) => consent,
-                Err(err) => {
-                    return Err(Error::ConfirmationError { err });
-                },
-            };
+            let consent: bool = Confirm::new().interact().map_err(|source| Error::ConfirmationError { source })?;
             if !consent {
                 println!("Not overwriting, aborted.");
                 return Ok(());
@@ -356,18 +313,10 @@ pub async fn add(
     // Convert the hostname and ports to Addresses
     // Note we do it a bit impractically, but that's to parse the hostname correctly in case it's an IP address.
     debug!("Parsing hostname...");
-    let api: Address = match Address::from_str(&format!("http://{}:{}", hostname.hostname, api_port)) {
-        Ok(addr) => addr,
-        Err(err) => {
-            return Err(Error::AddressParseError { err });
-        },
-    };
-    let drv: Address = match Address::from_str(&format!("grpc://{}:{}", hostname.hostname, drv_port)) {
-        Ok(addr) => addr,
-        Err(err) => {
-            return Err(Error::AddressParseError { err });
-        },
-    };
+    let api: Address =
+        Address::from_str(&format!("http://{}:{}", hostname.hostname, api_port)).map_err(|source| Error::AddressParseError { source })?;
+    let drv: Address =
+        Address::from_str(&format!("grpc://{}:{}", hostname.hostname, drv_port)).map_err(|source| Error::AddressParseError { source })?;
 
     // Warn the user to let them know an alternative is available if it is an IP
     if name == hostname.hostname && api.is_ip() {
@@ -380,12 +329,9 @@ pub async fn add(
 
         // Do a simple HTTP call to the health
         let health_addr: String = format!("{api}/health");
-        let res: reqwest::Response = match reqwest::get(&health_addr).await {
-            Ok(res) => res,
-            Err(err) => {
-                return Err(Error::RequestError { address: health_addr, err });
-            },
-        };
+        let res: reqwest::Response =
+            reqwest::get(&health_addr).await.map_err(|source| Error::RequestError { address: health_addr.clone(), source })?;
+
         if !res.status().is_success() {
             return Err(Error::InstanceNotAliveError { address: health_addr, code: res.status(), err: res.text().await.ok() });
         }
@@ -440,8 +386,8 @@ pub fn remove(names: Vec<String>, force: bool) -> Result<(), Error> {
                     return Ok(());
                 }
             },
-            Err(err) => {
-                return Err(Error::ConfirmationError { err });
+            Err(source) => {
+                return Err(Error::ConfirmationError { source });
             },
         };
     }
@@ -478,9 +424,7 @@ pub fn remove(names: Vec<String>, force: bool) -> Result<(), Error> {
             if name == active_name {
                 // Remove the active file
                 let active_path: PathBuf = InstanceInfo::get_default_path(&name)?;
-                if let Err(err) = fs::remove_file(&active_path) {
-                    return Err(Error::ActiveInstanceRemoveError { path: active_path, err });
-                }
+                fs::remove_file(&active_path).map_err(|source| Error::ActiveInstanceRemoveError { path: active_path, source })?;
             }
         }
 
@@ -515,12 +459,7 @@ pub async fn list(show_status: bool) -> Result<(), Error> {
     }
 
     // Fetch the instances directory
-    let instances_dir: PathBuf = match ensure_instances_dir(true) {
-        Ok(dir) => dir,
-        Err(err) => {
-            return Err(Error::InstancesDirError { err });
-        },
-    };
+    let instances_dir: PathBuf = ensure_instances_dir(true).map_err(|source| Error::InstancesDirError { source })?;
 
     // Fetch the active link, if any
     let active_name: Option<String> = if InstanceInfo::active_instance_exists()? {
@@ -533,20 +472,11 @@ pub async fn list(show_status: bool) -> Result<(), Error> {
 
     // Open up the ol' directory and iterate over its contents
     debug!("Reading '{}'...", instances_dir.display());
-    let entries: ReadDir = match fs::read_dir(&instances_dir) {
-        Ok(entries) => entries,
-        Err(err) => {
-            return Err(Error::InstancesDirReadError { path: instances_dir, err });
-        },
-    };
+    let entries: ReadDir = fs::read_dir(&instances_dir).map_err(|source| Error::InstancesDirReadError { path: instances_dir.clone(), source })?;
+
     for (i, entry) in entries.enumerate() {
         // Unpack the entry
-        let entry: DirEntry = match entry {
-            Ok(entry) => entry,
-            Err(err) => {
-                return Err(Error::InstancesDirEntryReadError { path: instances_dir, entry: i, err });
-            },
-        };
+        let entry: DirEntry = entry.map_err(|source| Error::InstancesDirEntryReadError { path: instances_dir.clone(), entry: i, source })?;
 
         // Assert it is a directory
         let entry_path: PathBuf = entry.path();
@@ -565,17 +495,17 @@ pub async fn list(show_status: bool) -> Result<(), Error> {
             // Open up the file
             let info: InstanceInfo = match InstanceInfo::from_default_path(&name) {
                 Ok(info) => info,
-                Err(Error::InstanceInfoOpenError { path, err }) => {
+                Err(Error::InstanceInfoOpenError { path, source }) => {
                     // Skip silently if not found
-                    if err.kind() == std::io::ErrorKind::NotFound {
+                    if source.kind() == std::io::ErrorKind::NotFound {
                         debug!("Skipping entry '{}' (no nested '{}' file)", entry_path.display(), path.display());
                         continue;
                     }
                     // Otherwise, do error
-                    return Err(Error::InstanceInfoOpenError { path, err });
+                    return Err(Error::InstanceInfoOpenError { path, source });
                 },
-                Err(err) => {
-                    return Err(err);
+                Err(source) => {
+                    return Err(source);
                 },
             };
             (info.api.to_string(), info.drv.to_string(), info.user.clone())
@@ -642,12 +572,7 @@ pub fn select(name: String) -> Result<(), Error> {
 
     // Get the path to the instance directory
     debug!("Asserting instance exists...");
-    let dir: PathBuf = match get_instance_dir(&name) {
-        Ok(dir) => dir,
-        Err(err) => {
-            return Err(Error::InstanceDirError { err });
-        },
-    };
+    let dir: PathBuf = get_instance_dir(&name).map_err(|source| Error::InstanceDirError { source })?;
 
     // Assert it exists (as a directory).
     if !dir.exists() {
@@ -658,18 +583,11 @@ pub fn select(name: String) -> Result<(), Error> {
     }
 
     // Get the path of the link file
-    let link_path: PathBuf = match get_active_instance_link() {
-        Ok(path) => path,
-        Err(err) => {
-            return Err(Error::ActiveInstancePathError { err });
-        },
-    };
+    let link_path: PathBuf = get_active_instance_link().map_err(|source| Error::ActiveInstancePathError { source })?;
 
     // Simply write a new link, which overwrites the previous file
     debug!("Generating new active link...");
-    if let Err(err) = fs::write(&link_path, &name) {
-        return Err(Error::ActiveInstanceCreateError { path: link_path, target: name, err });
-    }
+    fs::write(&link_path, &name).map_err(|source| Error::ActiveInstanceCreateError { path: link_path, target: name.clone(), source })?;
 
     // Done
     println!("Successfully switched to {}", style(name).bold().cyan());
@@ -706,7 +624,7 @@ pub fn edit(
             // We fetch the directory based on the name
             match get_instance_dir(n) {
                 Ok(path) => Ok(path.join("info.yml")),
-                Err(err) => Err(Error::InstanceDirError { err }),
+                Err(source) => Err(Error::InstanceDirError { source }),
             }
         })
         .unwrap_or_else(|| {

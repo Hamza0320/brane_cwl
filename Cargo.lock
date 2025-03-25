@@ -532,6 +532,7 @@ dependencies = [
  "serde_yml",
  "specifications 3.0.0",
  "tempfile",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
  "tokio-tar",
@@ -555,6 +556,7 @@ dependencies = [
  "serde_json_any_key",
  "specifications 3.0.0",
  "strum 0.27.1",
+ "thiserror 2.0.12",
  "uuid",
 ]
 
@@ -595,6 +597,7 @@ dependencies = [
  "log",
  "serde_json",
  "specifications 3.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "url",
 ]
@@ -611,6 +614,7 @@ dependencies = [
  "serde",
  "serde_yml",
  "specifications 3.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "x509-parser",
 ]
@@ -663,6 +667,7 @@ dependencies = [
  "specifications 3.0.0",
  "tar",
  "tempfile",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
  "tokio-util",
@@ -727,6 +732,7 @@ dependencies = [
  "specifications 3.0.0",
  "srv",
  "tempfile",
+ "thiserror 2.0.12",
  "tokio",
 ]
 
@@ -752,6 +758,7 @@ dependencies = [
  "serde_json",
  "serde_json_any_key",
  "specifications 3.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
  "tonic 0.12.3",
@@ -770,6 +777,7 @@ dependencies = [
  "regex",
  "serde",
  "specifications 3.0.0",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -811,6 +819,7 @@ dependencies = [
  "serde",
  "serde_json",
  "specifications 3.0.0",
+ "thiserror 2.0.12",
  "tokio",
 ]
 
@@ -865,6 +874,7 @@ dependencies = [
  "serde_json_any_key",
  "serde_yml",
  "specifications 3.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
  "tonic 0.12.3",
@@ -887,6 +897,7 @@ dependencies = [
  "serde_json",
  "serde_yml",
  "specifications 3.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "tonic 0.12.3",
  "yaml-rust2",
@@ -935,6 +946,7 @@ dependencies = [
  "serde_json",
  "socksx",
  "specifications 3.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-rustls 0.24.1",
  "url",
@@ -964,6 +976,7 @@ dependencies = [
  "serde_yml",
  "specifications 3.0.0",
  "tempfile",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-rustls 0.24.1",
  "warp",
@@ -988,6 +1001,7 @@ dependencies = [
  "sha2",
  "specifications 3.0.0",
  "tempfile",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
  "tokio-tar",
@@ -1051,6 +1065,7 @@ dependencies = [
  "serde_yml",
  "sha2",
  "specifications 3.0.0",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-tar",
  "tokio-util",
@@ -4391,6 +4406,7 @@ dependencies = [
  "serde_yml",
  "strum 0.27.1",
  "strum_macros 0.27.1",
+ "thiserror 2.0.12",
  "tonic 0.12.3",
  "uuid",
 ]

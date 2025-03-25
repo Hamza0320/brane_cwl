@@ -54,15 +54,15 @@ fn resolve_instance(name: Option<String>) -> Result<(String, PathBuf), Error> {
                 true => Ok((name, path)),
                 false => Err(Error::UnknownInstance { name }),
             },
-            Err(err) => Err(Error::InstanceDirError { err }),
+            Err(source) => Err(Error::InstanceDirError { source }),
         }
     } else {
         match InstanceInfo::get_active_name() {
             Ok(name) => match InstanceInfo::get_instance_path(&name) {
                 Ok(path) => Ok((name, path)),
-                Err(err) => Err(Error::InstancePathError { name, err }),
+                Err(source) => Err(Error::InstancePathError { name, source }),
             },
-            Err(err) => Err(Error::ActiveInstanceReadError { err }),
+            Err(source) => Err(Error::ActiveInstanceReadError { source }),
         }
     }
 }
@@ -80,27 +80,19 @@ fn resolve_instance(name: Option<String>) -> Result<(String, PathBuf), Error> {
 /// # Errors
 /// This function may error if we failed to parse the certificate or extract the required fields.
 fn analyse_cert(cert: &Certificate, path: impl Into<PathBuf>, i: usize) -> Result<(CertificateKind, Option<String>), Error> {
+    let path = path.into();
+
     // Attempt to parse the certificate as a real x509 one
     let cert: X509Certificate = match X509Certificate::from_der(&cert.0) {
         Ok((_, cert)) => cert,
-        Err(err) => {
-            return Err(Error::CertParseError { path: path.into(), i, err });
+        Err(source) => {
+            return Err(Error::CertParseError { path, i, source });
         },
     };
 
     // Try to find the list of allowed usages
-    let exts: HashMap<_, _> = match cert.extensions_map() {
-        Ok(exts) => exts,
-        Err(err) => {
-            return Err(Error::CertExtensionsError { path: path.into(), i, err });
-        },
-    };
-    let usage: &X509Extension = match exts.get(&OID_X509_EXT_KEY_USAGE) {
-        Some(usage) => usage,
-        None => {
-            return Err(Error::CertNoKeyUsageError { path: path.into(), i });
-        },
-    };
+    let exts: HashMap<_, _> = cert.extensions_map().map_err(|source| Error::CertExtensionsError { path: path.clone(), i, source })?;
+    let usage: &X509Extension = exts.get(&OID_X509_EXT_KEY_USAGE).ok_or_else(|| Error::CertNoKeyUsageError { path: path.clone(), i })?;
 
     // Attempt to find the CA one
     let kind: CertificateKind = match usage.parsed_extension() {
@@ -114,7 +106,7 @@ fn analyse_cert(cert: &Certificate, path: impl Into<PathBuf>, i: usize) -> Resul
             } else if ds && cs {
                 CertificateKind::Both
             } else {
-                return Err(Error::CertNoUsageError { path: path.into(), i });
+                return Err(Error::CertNoUsageError { path, i });
             }
         },
 
@@ -129,12 +121,7 @@ fn analyse_cert(cert: &Certificate, path: impl Into<PathBuf>, i: usize) -> Resul
     let issuer: &X509Name = cert.issuer();
     for name in issuer.iter_common_name() {
         // Get it as a string
-        let name: &str = match name.as_str() {
-            Ok(name) => name,
-            Err(err) => {
-                return Err(Error::CertIssuerCaError { path: path.into(), i, err });
-            },
-        };
+        let name: &str = name.as_str().map_err(|source| Error::CertIssuerCaError { path: path.clone(), i, source })?;
 
         // Extract the real name if any
         if name.len() >= 7 && &name[..7] == "CA for " {
@@ -179,17 +166,8 @@ enum CertificateKind {
 /// This function may error if there was no active instance or we failed to get/read its directory.
 pub fn get_active_certs_dir(domain: impl AsRef<Path>) -> Result<PathBuf, Error> {
     // Attempt to get the active link
-    let active_path: PathBuf = match InstanceInfo::get_active_name() {
-        Ok(name) => match InstanceInfo::get_instance_path(&name) {
-            Ok(path) => path,
-            Err(err) => {
-                return Err(Error::InstancePathError { name, err });
-            },
-        },
-        Err(err) => {
-            return Err(Error::ActiveInstanceReadError { err });
-        },
-    };
+    let name = InstanceInfo::get_active_name().map_err(|source| Error::ActiveInstanceReadError { source })?;
+    let active_path: PathBuf = InstanceInfo::get_instance_path(&name).map_err(|source| Error::InstancePathError { name, source })?;
 
     // Return the path within
     Ok(active_path.join("certs").join(domain))
@@ -225,12 +203,9 @@ pub fn add(instance_name: Option<String>, paths: Vec<PathBuf>, mut domain_name: 
         debug!("Reading certificate '{}'...", path.display());
 
         // Load any certificate and key we can find in this file
-        let (certs, keys): (Vec<Certificate>, Vec<PrivateKey>) = match load_all(path) {
-            Ok(res) => res,
-            Err(err) => {
-                return Err(Error::PemLoadError { path: path.clone(), err });
-            },
-        };
+        let (certs, keys): (Vec<Certificate>, Vec<PrivateKey>) =
+            load_all(path).map_err(|source| Error::PemLoadError { path: path.clone(), source })?;
+
         if certs.is_empty() && keys.is_empty() {
             warn!("Empty file '{}' (at least, no valid certificates or keys found)", path.display());
             continue;
@@ -362,26 +337,17 @@ pub fn add(instance_name: Option<String>, paths: Vec<PathBuf>, mut domain_name: 
                 style(&domain_name).cyan().bold(),
                 style(&instance_name).cyan().bold()
             );
-            let consent: bool = match Confirm::new().interact() {
-                Ok(consent) => consent,
-                Err(err) => {
-                    return Err(Error::ConfirmationError { err });
-                },
-            };
+            let consent: bool = Confirm::new().interact().map_err(|source| Error::ConfirmationError { source })?;
             if !consent {
                 println!("Not overwriting, aborted.");
                 return Ok(());
             }
-            if let Err(err) = fs::remove_dir_all(&certs_path) {
-                return Err(Error::CertsDirRemoveError { path: certs_path, err });
-            }
+            fs::remove_dir_all(&certs_path).map_err(|source| Error::CertsDirRemoveError { path: certs_path.clone(), source })?;
         }
     }
 
     debug!("Creating directory '{}'...", certs_path.display());
-    if let Err(err) = fs::create_dir_all(&certs_path) {
-        return Err(Error::CertsDirCreateError { path: certs_path, err });
-    }
+    fs::create_dir_all(&certs_path).map_err(|source| Error::CertsDirCreateError { path: certs_path.clone(), source })?;
 
     // Now write the CA certificates first
     {
@@ -389,28 +355,17 @@ pub fn add(instance_name: Option<String>, paths: Vec<PathBuf>, mut domain_name: 
         debug!("Writing CA certificates to '{}'...", ca_path.display());
 
         // Open a handle
-        let mut handle: File = match File::create(&ca_path) {
-            Ok(handle) => handle,
-            Err(err) => {
-                return Err(Error::FileOpenError { what: "ca", path: ca_path, err });
-            },
-        };
+        let mut handle: File = File::create(&ca_path).map_err(|source| Error::FileOpenError { what: "ca", path: ca_path.clone(), source })?;
 
         // Write the CA certificate with all the bells and whistles
-        if let Err(err) = writeln!(handle, "-----BEGIN CERTIFICATE-----") {
-            return Err(Error::FileWriteError { what: "ca", path: ca_path, err });
-        }
+        writeln!(handle, "-----BEGIN CERTIFICATE-----").map_err(|source| Error::FileWriteError { what: "ca", path: ca_path.clone(), source })?;
+
         for chunk in STANDARD.encode(ca_cert.0).as_bytes().chunks(64) {
-            if let Err(err) = handle.write(chunk) {
-                return Err(Error::FileWriteError { what: "ca", path: ca_path, err });
-            }
-            if let Err(err) = writeln!(handle) {
-                return Err(Error::FileWriteError { what: "ca", path: ca_path, err });
-            }
+            handle.write(chunk).map_err(|source| Error::FileWriteError { what: "ca", path: ca_path.clone(), source })?;
+            writeln!(handle).map_err(|source| Error::FileWriteError { what: "ca", path: ca_path.clone(), source })?;
         }
-        if let Err(err) = writeln!(handle, "-----END CERTIFICATE-----") {
-            return Err(Error::FileWriteError { what: "ca", path: ca_path, err });
-        }
+
+        writeln!(handle, "-----END CERTIFICATE-----").map_err(|source| Error::FileWriteError { what: "ca", path: ca_path, source })?;
     }
 
     // Next, write the client certificates and keys
@@ -419,44 +374,42 @@ pub fn add(instance_name: Option<String>, paths: Vec<PathBuf>, mut domain_name: 
         debug!("Writing client certificates & keys to '{}'...", client_path.display());
 
         // Open a handle
-        let mut handle: File = match File::create(&client_path) {
-            Ok(handle) => handle,
-            Err(err) => {
-                return Err(Error::FileOpenError { what: "client ID", path: client_path, err });
-            },
-        };
+        let mut handle: File =
+            File::create(&client_path).map_err(|source| Error::FileOpenError { what: "client ID", path: client_path.clone(), source })?;
 
         // Write the client certificate with all the bells and whistles
-        if let Err(err) = writeln!(handle, "-----BEGIN CERTIFICATE-----") {
-            return Err(Error::FileWriteError { what: "client ID", path: client_path, err });
-        }
+        writeln!(handle, "-----BEGIN CERTIFICATE-----").map_err(|source| Error::FileWriteError {
+            what: "client ID",
+            path: client_path.clone(),
+            source,
+        })?;
+
         for chunk in STANDARD.encode(client_cert.0).as_bytes().chunks(64) {
-            if let Err(err) = handle.write(chunk) {
-                return Err(Error::FileWriteError { what: "client ID", path: client_path, err });
-            }
-            if let Err(err) = writeln!(handle) {
-                return Err(Error::FileWriteError { what: "client ID", path: client_path, err });
-            }
+            handle.write(chunk).map_err(|source| Error::FileWriteError { what: "client ID", path: client_path.clone(), source })?;
+            writeln!(handle).map_err(|source| Error::FileWriteError { what: "client ID", path: client_path.clone(), source })?;
         }
-        if let Err(err) = writeln!(handle, "-----END CERTIFICATE-----") {
-            return Err(Error::FileWriteError { what: "client ID", path: client_path, err });
-        }
+        writeln!(handle, "-----END CERTIFICATE-----").map_err(|source| Error::FileWriteError {
+            what: "client ID",
+            path: client_path.clone(),
+            source,
+        })?;
 
         // Write the client key with all the bells and whistles
-        if let Err(err) = writeln!(handle, "-----BEGIN RSA PRIVATE KEY-----") {
-            return Err(Error::FileWriteError { what: "client ID", path: client_path, err });
-        }
+        writeln!(handle, "-----BEGIN RSA PRIVATE KEY-----").map_err(|source| Error::FileWriteError {
+            what: "client ID",
+            path: client_path.clone(),
+            source,
+        })?;
+
         for chunk in STANDARD.encode(client_key.0).as_bytes().chunks(64) {
-            if let Err(err) = handle.write(chunk) {
-                return Err(Error::FileWriteError { what: "client ID", path: client_path, err });
-            }
-            if let Err(err) = writeln!(handle) {
-                return Err(Error::FileWriteError { what: "client ID", path: client_path, err });
-            }
+            handle.write(chunk).map_err(|source| Error::FileWriteError { what: "client ID", path: client_path.clone(), source })?;
+            writeln!(handle).map_err(|source| Error::FileWriteError { what: "client ID", path: client_path.clone(), source })?;
         }
-        if let Err(err) = writeln!(handle, "-----END RSA PRIVATE KEY-----") {
-            return Err(Error::FileWriteError { what: "client ID", path: client_path, err });
-        }
+        writeln!(handle, "-----END RSA PRIVATE KEY-----").map_err(|source| Error::FileWriteError {
+            what: "client ID",
+            path: client_path.clone(),
+            source,
+        })?;
     }
 
     // Done!
@@ -494,12 +447,8 @@ pub fn remove(domain_names: Vec<String>, instance_name: Option<String>, force: b
             if domain_names.len() > 1 { "s" } else { "" },
             PrettyListFormatter::new(domain_names.iter().map(|n| style(n).bold().cyan()), "and")
         );
-        let consent: bool = match Confirm::new().interact() {
-            Ok(consent) => consent,
-            Err(err) => {
-                return Err(Error::ConfirmationError { err });
-            },
-        };
+        let consent: bool = Confirm::new().interact().map_err(|source| Error::ConfirmationError { source })?;
+
         if !consent {
             println!("Aborted.");
             return Ok(());
@@ -553,29 +502,16 @@ pub fn list(instance_name: Option<String>, all: bool) -> Result<(), Error> {
     let instances: Vec<(String, PathBuf)> = if all {
         // Get the instances dir
         debug!("Finding instances...");
-        let instances_dir: PathBuf = match ensure_instances_dir(true) {
-            Ok(dir) => dir,
-            Err(err) => {
-                return Err(Error::InstancesDirError { err });
-            },
-        };
+        let instances_dir: PathBuf = ensure_instances_dir(true).map_err(|source| Error::InstancesDirError { source })?;
 
         // Iterate over it
-        let entries: ReadDir = match fs::read_dir(&instances_dir) {
-            Ok(entries) => entries,
-            Err(err) => {
-                return Err(Error::DirReadError { what: "instances", path: instances_dir, err });
-            },
-        };
+        let entries: ReadDir =
+            fs::read_dir(&instances_dir).map_err(|source| Error::DirReadError { what: "instances", path: instances_dir.clone(), source })?;
         let mut instances: Vec<(String, PathBuf)> = Vec::with_capacity(entries.size_hint().1.unwrap_or(entries.size_hint().0));
         for (i, entry) in entries.enumerate() {
             // Unwrap the entry
-            let entry: DirEntry = match entry {
-                Ok(entries) => entries,
-                Err(err) => {
-                    return Err(Error::DirEntryReadError { what: "instances", path: instances_dir, entry: i, err });
-                },
-            };
+            let entry: DirEntry =
+                entry.map_err(|source| Error::DirEntryReadError { what: "instances", path: instances_dir.clone(), entry: i, source })?;
 
             // Do some checks on whether this is an instance or not
             let entry_path: PathBuf = entry.path();
@@ -606,26 +542,16 @@ pub fn list(instance_name: Option<String>, all: bool) -> Result<(), Error> {
         // Ensure the certs directory exists
         let certs_dir: PathBuf = path.join("certs");
         if !certs_dir.exists() {
-            if let Err(err) = fs::create_dir_all(&certs_dir) {
-                return Err(Error::CertsDirCreateError { path: certs_dir, err });
-            }
+            fs::create_dir_all(&certs_dir).map_err(|source| Error::CertsDirCreateError { path: certs_dir.clone(), source })?;
         }
 
         // Iterate over the things in the 'certs' directory
-        let entries: ReadDir = match fs::read_dir(&certs_dir) {
-            Ok(entries) => entries,
-            Err(err) => {
-                return Err(Error::DirReadError { what: "certificates", path: certs_dir, err });
-            },
-        };
+        let entries: ReadDir =
+            fs::read_dir(&certs_dir).map_err(|source| Error::DirReadError { what: "certificates", path: certs_dir.clone(), source })?;
+
         for (i, entry) in entries.enumerate() {
             // Unwrap the entry
-            let entry: DirEntry = match entry {
-                Ok(entries) => entries,
-                Err(err) => {
-                    return Err(Error::DirEntryReadError { what: "certificates", path: certs_dir, entry: i, err });
-                },
-            };
+            let entry = entry.map_err(|source| Error::DirEntryReadError { what: "certificates", path: certs_dir.clone(), entry: i, source })?;
 
             // Do some checks on whether this is a certificate directory or not
             let entry_path: PathBuf = entry.path();

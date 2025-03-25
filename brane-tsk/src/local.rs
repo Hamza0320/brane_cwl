@@ -35,20 +35,15 @@ pub use crate::errors::LocalError as Error;
 /// The list of Versions found in the given package directory, or a PackageError if we couldn't.
 pub fn get_package_versions(package_name: &str, package_dir: &Path) -> Result<Vec<Version>, Error> {
     // Get the list of available versions
-    let version_dirs = match fs::read_dir(package_dir) {
-        Ok(files) => files,
-        Err(reason) => {
-            return Err(Error::PackageDirReadError { path: package_dir.to_path_buf(), err: reason });
-        },
-    };
+    let version_dirs = fs::read_dir(package_dir).map_err(|source| Error::PackageDirReadError { path: package_dir.to_path_buf(), source })?;
 
     // Convert the list of strings into a version
     let mut versions: Vec<Version> = Vec::new();
     for dir in version_dirs {
-        if let Err(reason) = dir {
-            return Err(Error::PackageDirReadError { path: package_dir.to_path_buf(), err: reason });
-        }
-        let dir_path = dir.unwrap().path();
+        let dir_path = match dir {
+            Ok(dir) => dir.path(),
+            Err(source) => return Err(Error::PackageDirReadError { path: package_dir.to_path_buf(), source }),
+        };
 
         // Next, check if it's a 'package dir' by checking for the files we need
         if !dir_path.join("package.yml").exists() {
@@ -63,12 +58,11 @@ pub fn get_package_versions(package_name: &str, package_dir: &Path) -> Result<Ve
                 return Err(Error::UnreadableVersionEntry { path: dir_path });
             },
         };
-        let version = match Version::from_str(&dir_name) {
-            Ok(value) => value,
-            Err(reason) => {
-                return Err(Error::IllegalVersionEntry { package: package_name.to_string(), version: dir_name, err: reason });
-            },
-        };
+        let version = Version::from_str(&dir_name).map_err(|source| Error::IllegalVersionEntry {
+            package: package_name.to_string(),
+            version: dir_name,
+            source,
+        })?;
 
         // Push it to the list and try again
         versions.push(version);
@@ -100,20 +94,12 @@ pub fn get_package_index(packages: impl AsRef<Path>) -> Result<PackageIndex, Err
     let packages_path: &Path = packages.as_ref();
 
     // Open an iterator to the list of files
-    let package_dirs = match fs::read_dir(packages_path) {
-        Ok(dir) => dir,
-        Err(err) => {
-            return Err(Error::PackagesDirReadError { path: packages_path.into(), err });
-        },
-    };
+    let package_dirs = fs::read_dir(packages_path).map_err(|source| Error::PackagesDirReadError { path: packages_path.into(), source })?;
 
     // Start iterating through all the packages
     let mut packages = vec![];
     for package in package_dirs {
-        if let Err(reason) = package {
-            return Err(Error::PackagesDirReadError { path: packages_path.into(), err: reason });
-        }
-        let package = package.unwrap();
+        let package = package.map_err(|source| Error::PackagesDirReadError { path: packages_path.into(), source })?;
 
         // Make sure it's a directory
         let package_path = package.path();
@@ -134,18 +120,15 @@ pub fn get_package_index(packages: impl AsRef<Path>) -> Result<PackageIndex, Err
                 Ok(package_info) => {
                     packages.push(package_info);
                 },
-                Err(err) => {
-                    return Err(Error::InvalidPackageYml { package: package_name.to_string(), path: package_file, err });
+                Err(source) => {
+                    return Err(Error::InvalidPackageYml { package: package_name.to_string(), path: package_file, source });
                 },
             }
         }
     }
 
     // Generate the package index from the collected list of packages
-    match PackageIndex::from_value(json!(packages)) {
-        Ok(index) => Ok(index),
-        Err(err) => Err(Error::PackageIndexError { err }),
-    }
+    PackageIndex::from_value(json!(packages)).map_err(|source| Error::PackageIndexError { source })
 }
 
 
@@ -164,43 +147,23 @@ pub fn get_data_index(datasets_path: impl AsRef<Path>) -> Result<DataIndex, Erro
     let datasets_path: &Path = datasets_path.as_ref();
 
     // Start reading the directory
-    let dirs: ReadDir = match fs::read_dir(datasets_path) {
-        Ok(dirs) => dirs,
-        Err(err) => {
-            return Err(Error::DatasetsReadError { path: datasets_path.into(), err });
-        },
-    };
+    let dirs: ReadDir = fs::read_dir(datasets_path).map_err(|source| Error::DatasetsReadError { path: datasets_path.into(), source })?;
 
     // Read it and iterate over all of the nested directories
     let mut infos: Vec<DataInfo> = Vec::with_capacity(16);
     for d in dirs {
         // Unwrap the entry
-        let d: DirEntry = match d {
-            Ok(d) => d,
-            Err(err) => {
-                return Err(Error::DatasetsReadError { path: datasets_path.into(), err });
-            },
-        };
+        let d: DirEntry = d.map_err(|source| Error::DatasetsReadError { path: datasets_path.into(), source })?;
 
         // If it's a directory, tentatively try to find a 'data.yml' file in there
         let d_path: PathBuf = d.path();
         let info_path: PathBuf = d_path.join("data.yml");
         if d_path.is_dir() && info_path.exists() {
             // Attempt to open the file
-            let handle = match File::open(&info_path) {
-                Ok(handle) => handle,
-                Err(err) => {
-                    return Err(Error::DataInfoOpenError { path: info_path, err });
-                },
-            };
+            let handle = File::open(&info_path).map_err(|source| Error::DataInfoOpenError { path: info_path.clone(), source })?;
 
             // Attempt to parse it
-            let info: DataInfo = match serde_yaml::from_reader(handle) {
-                Ok(info) => info,
-                Err(err) => {
-                    return Err(Error::DataInfoReadError { path: info_path, err });
-                },
-            };
+            let info: DataInfo = serde_yaml::from_reader(handle).map_err(|source| Error::DataInfoReadError { path: info_path, source })?;
 
             // Add it to the index
             infos.push(info);
@@ -208,8 +171,5 @@ pub fn get_data_index(datasets_path: impl AsRef<Path>) -> Result<DataIndex, Erro
     }
 
     // Return a newly constructed info with it
-    match DataIndex::from_infos(infos) {
-        Ok(index) => Ok(index),
-        Err(err) => Err(Error::DataIndexError { err }),
-    }
+    DataIndex::from_infos(infos).map_err(|source| Error::DataIndexError { source })
 }

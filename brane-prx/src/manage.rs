@@ -84,8 +84,8 @@ pub async fn new_outgoing_path(body: Bytes, context: Arc<Context>) -> Result<imp
     debug!("Parsing incoming body...");
     let body: NewPathRequest = match serde_json::from_slice(&body) {
         Ok(body) => body,
-        Err(err) => {
-            error!("Failed to parse incoming request body as JSON: {}", err);
+        Err(source) => {
+            error!("Failed to parse incoming request body as JSON: {}", source);
             return Ok(response!(StatusCode::BAD_REQUEST));
         },
     };
@@ -119,8 +119,8 @@ pub async fn new_outgoing_path(body: Bytes, context: Arc<Context>) -> Result<imp
     let address: SocketAddr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port).into();
     let server = match path_server_factory(&context, address, body.address.clone(), body.tls.clone()).await {
         Ok(server) => server,
-        Err(err) => {
-            error!("Failed to create the path server: {}", err);
+        Err(source) => {
+            error!("Failed to create the path server: {}", source);
             return Err(reject!("An internal server error has occurred."));
         },
     };
@@ -162,12 +162,8 @@ pub async fn new_incoming_path(port: u16, address: Address, context: Arc<Context
     // Attempt to start listening on that port
     let socket_addr: SocketAddr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port).into();
     debug!("Creating listener on '{}'", socket_addr);
-    let listener: TcpListener = match TcpListener::bind(socket_addr).await {
-        Ok(listener) => listener,
-        Err(err) => {
-            return Err(RedirectError::ListenerCreateError { address: socket_addr, err });
-        },
-    };
+    let listener: TcpListener =
+        TcpListener::bind(socket_addr).await.map_err(|source| RedirectError::ListenerCreateError { address: socket_addr, source })?;
 
     // Wrap that in a tokio future that does all of our work
     tokio::spawn(async move {
@@ -177,8 +173,8 @@ pub async fn new_incoming_path(port: u16, address: Address, context: Arc<Context
             debug!(">{}->{}: Ready for new connection", port, address);
             let (mut iconn, client_addr): (TcpStream, SocketAddr) = match listener.accept().await {
                 Ok(res) => res,
-                Err(err) => {
-                    error!(">{}->{}: Failed to accept incoming connection: {}", port, address, err);
+                Err(source) => {
+                    error!(">{}->{}: Failed to accept incoming connection: {}", port, address, source);
                     continue;
                 },
             };
@@ -189,8 +185,8 @@ pub async fn new_incoming_path(port: u16, address: Address, context: Arc<Context
             debug!("Connecting to '{}'...", addr);
             let mut oconn: TcpStream = match TcpStream::connect(&addr).await {
                 Ok(oconn) => oconn,
-                Err(err) => {
-                    error!(">{}->{}: Failed to connect to internal '{}': {}", port, address, addr, err);
+                Err(source) => {
+                    error!(">{}->{}: Failed to connect to internal '{}': {}", port, address, addr, source);
                     continue;
                 },
             };

@@ -101,18 +101,13 @@ pub async fn handle(
     let name: String = name.into();
 
     // Read the package info of the given package
-    let package_dir = match ensure_package_dir(&name, Some(&version), false) {
-        Ok(dir) => dir,
-        Err(err) => {
-            return Err(TestError::PackageDirError { name, version, err });
-        },
-    };
-    let package_info = match PackageInfo::from_path(package_dir.join("package.yml")) {
-        Ok(info) => info,
-        Err(err) => {
-            return Err(TestError::PackageInfoError { name, version, err });
-        },
-    };
+    let package_dir =
+        ensure_package_dir(&name, Some(&version), false).map_err(|source| TestError::PackageDirError { name: name.clone(), version, source })?;
+    let package_info = PackageInfo::from_path(package_dir.join("package.yml")).map_err(|source| TestError::PackageInfoError {
+        name: name.clone(),
+        version,
+        source,
+    })?;
 
     // Run the test for this info
     let output: FullValue = test_generic(package_info, show_result, docker_opts, keep_containers).await?;
@@ -141,28 +136,13 @@ pub async fn test_generic(
     keep_containers: bool,
 ) -> Result<FullValue, TestError> {
     // Get the local datasets directory
-    let datasets_dir: PathBuf = match ensure_datasets_dir(true) {
-        Ok(dir) => dir,
-        Err(err) => {
-            return Err(TestError::DatasetsDirError { err });
-        },
-    };
+    let datasets_dir: PathBuf = ensure_datasets_dir(true).map_err(|source| TestError::DatasetsDirError { source })?;
 
     // Collect the local data index
-    let data_index: DataIndex = match brane_tsk::local::get_data_index(datasets_dir) {
-        Ok(index) => index,
-        Err(err) => {
-            return Err(TestError::DataIndexError { err });
-        },
-    };
+    let data_index: DataIndex = brane_tsk::local::get_data_index(datasets_dir).map_err(|source| TestError::DataIndexError { source })?;
 
     // Query the user what they'd like to do (we quickly convert the common Type to a ClassDef)
-    let (function, mut args) = match prompt_for_input(&data_index, &info) {
-        Ok(res) => res,
-        Err(err) => {
-            return Err(TestError::InputError { err });
-        },
-    };
+    let (function, mut args) = prompt_for_input(&data_index, &info).map_err(|source| TestError::InputError { source })?;
 
     // Build a phony workflow with that
     let workflow_content: String = format!(
@@ -182,12 +162,8 @@ pub async fn test_generic(
     );
 
     // We run it by spinning up an offline VM
-    let mut state: OfflineVmState = match initialize_offline_vm(ParserOptions::bscript(), docker_opts, keep_containers) {
-        Ok(state) => state,
-        Err(err) => {
-            return Err(TestError::InitializeError { err });
-        },
-    };
+    let mut state: OfflineVmState =
+        initialize_offline_vm(ParserOptions::bscript(), docker_opts, keep_containers).map_err(|source| TestError::InitializeError { source })?;
 
     // Compile the workflow
     let snippet = Snippet::from_source(
@@ -200,14 +176,9 @@ pub async fn test_generic(
         "<test task>",
         workflow_content.clone(),
     )
-    .map_err(|err| TestError::RunError { err: run::Error::CompileError(err) })?;
+    .map_err(|source| TestError::RunError { source: run::Error::CompileError(source) })?;
 
-    let result: FullValue = match run_offline_vm(&mut state, snippet).await {
-        Ok(result) => result,
-        Err(err) => {
-            return Err(TestError::RunError { err });
-        },
-    };
+    let result: FullValue = run_offline_vm(&mut state, snippet).await.map_err(|source| TestError::RunError { source })?;
 
     // Write the intermediate result if told to do so
     if let Some(file) = show_result {
@@ -219,12 +190,7 @@ pub async fn test_generic(
             println!("{}", (0..80).map(|_| '-').collect::<String>());
             println!("Contents of intermediate result '{name}':");
             let path: PathBuf = state.results_dir.path().join(name).join(file);
-            let contents: String = match fs::read_to_string(&path) {
-                Ok(contents) => contents,
-                Err(err) => {
-                    return Err(TestError::IntermediateResultFileReadError { path, err });
-                },
-            };
+            let contents: String = fs::read_to_string(&path).map_err(|source| TestError::IntermediateResultFileReadError { path, source })?;
             if !contents.is_empty() {
                 println!("{contents}");
             }

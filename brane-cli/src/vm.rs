@@ -114,12 +114,7 @@ impl VmPlugin for OfflinePlugin {
         let binds: Vec<VolumeBind> = prof
             .time_fut("argument preprocessing", docker::preprocess_args(&mut info.args, &info.input, info.result, None::<String>, results_dir))
             .await?;
-        let params: String = match serde_json::to_string(&info.args) {
-            Ok(params) => params,
-            Err(err) => {
-                return Err(ExecuteError::ArgsEncodeError { err });
-            },
-        };
+        let params: String = serde_json::to_string(&info.args).map_err(|source| ExecuteError::ArgsEncodeError { source })?;
 
         // Create an ExecuteInfo with that
         let image: Image = Image::new(info.package_name, Some(info.package_version), Some(pinfo.digest.as_ref().unwrap()));
@@ -147,12 +142,10 @@ impl VmPlugin for OfflinePlugin {
 
         // We can now execute the task on the local Docker daemon
         debug!("Executing task '{}'...", info.name);
-        let (code, stdout, stderr) = match prof.time_fut("execution", docker::run_and_wait(docker_opts, einfo, keep_container)).await {
-            Ok(res) => res,
-            Err(err) => {
-                return Err(ExecuteError::DockerError { name: info.name.into(), image: Box::new(image), err });
-            },
-        };
+        let (code, stdout, stderr) = prof
+            .time_fut("execution", docker::run_and_wait(docker_opts, einfo, keep_container))
+            .await
+            .map_err(|source| ExecuteError::DockerError { name: info.name.into(), image: Box::new(image.clone()), source })?;
         debug!("Container return code: {}", code);
         debug!("Container stdout/stderr:\n\nstdout:\n{}\n\nstderr:\n{}\n", BlockFormatter::new(&stdout), BlockFormatter::new(&stderr));
 
@@ -165,12 +158,7 @@ impl VmPlugin for OfflinePlugin {
         let dec = prof.time("Decoding");
         let output = stdout.lines().last().unwrap_or_default().to_string();
         let raw: String = decode_base64(output)?;
-        let value: Option<FullValue> = match serde_json::from_str(&raw) {
-            Ok(value) => value,
-            Err(err) => {
-                return Err(ExecuteError::JsonDecodeError { raw, err });
-            },
-        };
+        let value: Option<FullValue> = serde_json::from_str(&raw).map_err(|source| ExecuteError::JsonDecodeError { raw, source })?;
         dec.stop();
 
         // Done, return the value
@@ -246,9 +234,9 @@ impl VmPlugin for OfflinePlugin {
                 match access {
                     AccessKind::File { path: data_path } => {
                         // Simply copy the one directory over the other and it's updated
-                        if let Err(err) = copy_dir_recursively_async(results_dir.join(path), data_path).await {
-                            return Err(CommitError::DataCopyError { err });
-                        }
+                        copy_dir_recursively_async(results_dir.join(path), data_path)
+                            .await
+                            .map_err(|source| CommitError::DataCopyError { source })?;
                     },
                 }
             } else {
@@ -263,9 +251,7 @@ impl VmPlugin for OfflinePlugin {
                 if dir.exists() {
                     return Err(CommitError::DataDirNotADir { path: dir });
                 }
-                if let Err(err) = tfs::create_dir_all(&dir).await {
-                    return Err(CommitError::DataDirCreateError { path: dir, err });
-                }
+                tfs::create_dir_all(&dir).await.map_err(|source| CommitError::DataDirCreateError { path: dir.clone(), source })?;
             }
 
             // Create a new DataInfo struct
@@ -280,29 +266,16 @@ impl VmPlugin for OfflinePlugin {
 
             // Write it to the target folder
             let info_path: PathBuf = dir.join("data.yml");
-            let mut handle: tfs::File = match tfs::File::create(&info_path).await {
-                Ok(handle) => handle,
-                Err(err) => {
-                    return Err(CommitError::DataInfoCreateError { path: info_path, err });
-                },
-            };
-            let sinfo: String = match serde_yaml::to_string(&info) {
-                Ok(sinfo) => sinfo,
-                Err(err) => {
-                    return Err(CommitError::DataInfoSerializeError { err });
-                },
-            };
-            if let Err(err) = handle.write_all(sinfo.as_bytes()).await {
-                return Err(CommitError::DataInfoWriteError { path: info_path, err });
-            }
+            let mut handle: tfs::File =
+                tfs::File::create(&info_path).await.map_err(|source| CommitError::DataInfoCreateError { path: info_path.clone(), source })?;
+            let sinfo: String = serde_yaml::to_string(&info).map_err(|source| CommitError::DataInfoSerializeError { source })?;
+            handle.write_all(sinfo.as_bytes()).await.map_err(|source| CommitError::DataInfoWriteError { path: info_path.clone(), source })?;
 
             // Finally, copy the intermediate file to the target
             let source: PathBuf = results_dir.join(path);
             let target: PathBuf = dir.join("data");
             debug!("Copying '{}' to '{}'...", source.display(), target.display());
-            if let Err(err) = copy_dir_recursively_async(source, target).await {
-                return Err(CommitError::DataCopyError { err });
-            }
+            copy_dir_recursively_async(source, target).await.map_err(|source| CommitError::DataCopyError { source })?;
 
             // The dataset has now been promoted
             debug!("Dataset created successfully.");
@@ -385,16 +358,14 @@ impl OfflineVm {
             };
             match planner.plan(workflow).await {
                 Ok(plan) => Ok(plan),
-                Err(err) => Err(Error::PlanError { err }),
+                Err(source) => Err(Error::PlanError { source }),
             }
         };
         // Unwrap the result (necessary to avoid borrowing conflicts with the lock)
         let plan: Workflow = match plan {
             Ok(plan) => plan,
-            Err(err) => return (self, Err(err)),
+            Err(source) => return (self, Err(source)),
         };
-
-
 
         // Step 2: Execution
         // Now wrap ourselves in a lock so that we can run the internal vm
@@ -409,14 +380,12 @@ impl OfflineVm {
             },
         };
 
-
-
         // Step 3: Result
         // Match the result to potentially error
         let value: FullValue = match result {
             Ok(value) => value,
-            Err(err) => {
-                return (this, Err(Error::ExecError { err }));
+            Err(source) => {
+                return (this, Err(Error::ExecError { source }));
             },
         };
 

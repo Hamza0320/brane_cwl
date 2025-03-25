@@ -42,12 +42,8 @@ impl LocalVersion {
     /// A new LocalVersion instance on success, or else a VersionError.
     fn new() -> Result<Self, VersionError> {
         // Parse the env
-        let version = match Version::from_str(env!("CARGO_PKG_VERSION")) {
-            Ok(version) => version,
-            Err(err) => {
-                return Err(VersionError::VersionParseError { raw: env!("CARGO_PKG_VERSION").to_string(), err });
-            },
-        };
+        let version = Version::from_str(env!("CARGO_PKG_VERSION"))
+            .map_err(|source| VersionError::VersionParseError { raw: env!("CARGO_PKG_VERSION").to_string(), source })?;
 
         // Done, return the struct
         Ok(Self { arch: Arch::HOST, version })
@@ -77,12 +73,7 @@ impl RemoteVersion {
 
         // Try to get the registry file path
         debug!(" > Reading registy.yml...");
-        let config: InstanceInfo = match InstanceInfo::from_active_path() {
-            Ok(config) => config,
-            Err(err) => {
-                return Err(VersionError::InstanceInfoError { err });
-            },
-        };
+        let config: InstanceInfo = InstanceInfo::from_active_path().map_err(|source| VersionError::InstanceInfoError { source })?;
 
         // Pass to the other constructor
         Self::from_instance_info(config).await
@@ -100,30 +91,15 @@ impl RemoteVersion {
         debug!(" > Querying...");
         let mut url: String = info.api.to_string();
         url.push_str("/version");
-        let response: Response = match reqwest::get(&url).await {
-            Ok(version) => version,
-            Err(err) => {
-                return Err(VersionError::RequestError { url, err });
-            },
-        };
+        let response: Response = reqwest::get(&url).await.map_err(|source| VersionError::RequestError { url: url.clone(), source })?;
         if response.status() != StatusCode::OK {
             return Err(VersionError::RequestFailure { url, status: response.status() });
         }
-        let version_body: String = match response.text().await {
-            Ok(body) => body,
-            Err(err) => {
-                return Err(VersionError::RequestBodyError { url, err });
-            },
-        };
+        let version_body: String = response.text().await.map_err(|source| VersionError::RequestBodyError { url: url.clone(), source })?;
 
         // Try to parse the version
         debug!(" > Parsing remote version...");
-        let version = match Version::from_str(&version_body) {
-            Ok(version) => version,
-            Err(err) => {
-                return Err(VersionError::VersionParseError { raw: version_body, err });
-            },
-        };
+        let version = Version::from_str(&version_body).map_err(|source| VersionError::VersionParseError { raw: version_body, source })?;
 
         // Done!
         debug!("Remote version number: {}", &version);
@@ -187,20 +163,10 @@ pub async fn handle() -> Result<(), VersionError> {
     println!();
 
     // If the registry file exists, then also do the remote
-    let active_instance_exists: bool = match InstanceInfo::active_instance_exists() {
-        Ok(exists) => exists,
-        Err(err) => {
-            return Err(VersionError::InstanceInfoExistsError { err });
-        },
-    };
+    let active_instance_exists: bool = InstanceInfo::active_instance_exists().map_err(|source| VersionError::InstanceInfoExistsError { source })?;
     if active_instance_exists {
         // Get the registry file from it
-        let config = match InstanceInfo::from_active_path() {
-            Ok(config) => config,
-            Err(err) => {
-                return Err(VersionError::InstanceInfoError { err });
-            },
-        };
+        let config = InstanceInfo::from_active_path().map_err(|source| VersionError::InstanceInfoError { source })?;
 
         // Print the URL
         println!("Remote Brane instance at '{}'", &config.api);

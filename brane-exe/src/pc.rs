@@ -12,7 +12,6 @@
 //!   Implements a program counter that correctly serializes.
 //
 
-use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Result as FResult};
 use std::ops::{Add, AddAssign};
 use std::str::FromStr;
@@ -26,39 +25,18 @@ use serde::ser::{Serialize, SerializeSeq, Serializer};
 
 /***** ERRORS *****/
 /// Defines errors when parsing [`ProgramCounter`] from a string.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ProgramCounterParseError {
     /// Failed to find a ':' in the program counter string.
+    #[error("Given string '{raw}' does not contain a separating colon (':')")]
     MissingColon { raw: String },
     /// Failed to parse the given string as a [`FunctionId`].
-    InvalidFunctionId { err: brane_ast::func_id::FunctionIdParseError },
+    #[error(transparent)]
+    InvalidFunctionId { source: brane_ast::func_id::FunctionIdParseError },
     /// Failed to parse the given string as a numerical index.
+    #[error("Failed to parse '{raw}' as a valid edge index (i.e., unsigned integer)")]
     InvalidIdx { raw: String, err: std::num::ParseIntError },
 }
-impl Display for ProgramCounterParseError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use ProgramCounterParseError::*;
-        match self {
-            MissingColon { raw } => write!(f, "Given string '{raw}' does not contain a separating colon (':')"),
-            InvalidFunctionId { err } => write!(f, "{err}"),
-            InvalidIdx { raw, .. } => write!(f, "Failed to parse '{raw}' as a valid edge index (i.e., unsigned integer)"),
-        }
-    }
-}
-impl Error for ProgramCounterParseError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        use ProgramCounterParseError::*;
-        match self {
-            MissingColon { .. } => None,
-            InvalidFunctionId { err } => err.source(),
-            InvalidIdx { err, .. } => Some(err),
-        }
-    }
-}
-
-
-
-
 
 /***** LIBRARY *****/
 /// Used to keep track of the current executing edge in a workflow.
@@ -215,7 +193,7 @@ impl FromStr for ProgramCounter {
         // Now parse the function ID and edge index separately
         let func_id: FunctionId = match FunctionId::from_str(func_id) {
             Ok(id) => id,
-            Err(err) => return Err(ProgramCounterParseError::InvalidFunctionId { err }),
+            Err(source) => return Err(ProgramCounterParseError::InvalidFunctionId { source }),
         };
         let edge_idx: usize = match usize::from_str(edge_idx) {
             Ok(id) => id,
