@@ -1412,78 +1412,13 @@ pub unsafe extern "C" fn vm_run(
 ///
 /// # Panics
 /// This function may panic if the input `vm` or `result` pointed to a NULL-pointer, or if `data_dir` did not point to a valid UTF-8 string.
+// TODO: Resolve this problem
+//
+/// /// <div class="warning">
+/// This function is currently broken because of ecosystem changes. See: https://github.com/braneframework/brane/issues/195
+/// </div>
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub unsafe extern "C" fn vm_process(vm: *mut VirtualMachine, result: *const FullValue, data_dir: *const c_char) -> *const Error {
-    init_logger();
-    info!("Processing result on virtual machine...");
-    let start: Instant = Instant::now();
-
-    // Unwrap the VM
-    let vm: &mut VirtualMachine = match vm.as_mut() {
-        Some(vm) => vm,
-        None => {
-            panic!("Given VirtualMachine is a NULL-pointer");
-        },
-    };
-    // Unwrap the result
-    let result: &FullValue = match result.as_ref() {
-        Some(result) => result,
-        None => {
-            panic!("Given FullValue is a NULL-pointer");
-        },
-    };
-    // Read the string
-    let data_dir: &str = cstr_to_rust(data_dir);
-
-    // If the value is a dataset, then download the data on top of it
-    if let FullValue::Data(d) = &result {
-        debug!("FullValue is a FullValue::Data, downloading...");
-
-        // Refresh the data index and get the access list for this dataset
-        let access: HashMap<String, AccessKind> = {
-            // Get a mutable lock to do so
-            let mut dindex: MutexGuard<DataIndex> = vm.state.dindex.lock();
-
-            // Simply load it again
-            let data_endpoint: String = format!("{}/data/info", vm.api_endpoint);
-            *dindex = match vm.runtime.block_on(get_data_index(data_endpoint)) {
-                Ok(index) => index,
-                Err(e) => {
-                    let err: Box<Error> = Box::new(Error { msg: format!("Failed to refresh data index: {e}") });
-                    return Box::into_raw(err);
-                },
-            };
-
-            // Fetch the correct map
-            match dindex.get(d) {
-                Some(info) => info.access.clone(),
-                None => {
-                    let err: Box<Error> = Box::new(Error { msg: format!("Resulting dataset '{d}' is not at any location") });
-                    return Box::into_raw(err);
-                },
-            }
-        };
-
-        // Run the process funtion
-        let res: Option<AccessKind> = match vm.runtime.block_on(download_data(&vm.api_endpoint, &None, &vm.certs_dir, data_dir, d, &access)) {
-            Ok(res) => res,
-            Err(e) => {
-                let err: Box<Error> = Box::new(Error { msg: format!("Failed to download resulting data from '{}': {}", vm.api_endpoint, e) });
-                return Box::into_raw(err);
-            },
-        };
-        if let Some(AccessKind::File { path }) = res {
-            info!("Downloaded dataset to '{}'", path.display());
-        }
-    } else if matches!(result, FullValue::IntermediateResult(_)) {
-        debug!("FullValue is a FullValue::IntermediateResult, downloading...");
-
-        // Emit a warning
-        warn!("Cannot download intermediate result");
-    }
-
-    // OK, nothing to return
-    debug!("Done (processing took {:.2}s)", start.elapsed().as_secs_f32());
-    std::ptr::null()
+pub unsafe extern "C" fn vm_process(_vm: *mut VirtualMachine, _result: *const FullValue, _data_dir: *const c_char) -> *const Error {
+    todo!("vm_process: This function doesn't know its workflow and can therefore cannot be implemented currently");
 }
