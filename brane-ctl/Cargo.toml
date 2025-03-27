@@ -12,11 +12,6 @@ license.workspace = true
 name = "branectl"
 path = "src/main.rs"
 
-[[bin]]
-name = "branectl-completions"
-path = "src/completions.rs"
-doc = false
-
 [dependencies]
 base64ct = "1.6.0"
 bollard = "0.18.0"
@@ -56,7 +51,6 @@ brane-cfg = { path = "../brane-cfg" }
 brane-shr = { path = "../brane-shr" }
 brane-tsk = { path = "../brane-tsk" }
 specifications = { path = "../specifications" }
-clap_complete = "4.5.8"
 
 
 [build-dependencies]
