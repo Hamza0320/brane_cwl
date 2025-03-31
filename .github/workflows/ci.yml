@@ -36,6 +36,23 @@ jobs:
       packages: workspace
       cache: true
 
+  check-stable-linux-arm:
+    name: "Check"
+    uses: ./.github/workflows/mixin-cargo-check.yml
+    with:
+      os: ubuntu-24.04-arm
+      packages: frontend
+      cache: true
+
+  build-stable-linux-arm:
+    needs: check-stable-linux-arm
+    name: "Build"
+    uses: ./.github/workflows/mixin-cargo-build.yml
+    with:
+      os: ubuntu-24.04-arm
+      packages: frontend
+      cache: true
+
   check-stable-windows:
     name: "Check"
     uses: ./.github/workflows/mixin-cargo-check.yml
