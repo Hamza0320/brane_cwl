@@ -150,7 +150,7 @@ unsafe fn rust_to_cstr(string: String) -> *mut c_char {
     let n_chars: usize = string.as_bytes().len();
     let target: *mut c_char = libc::malloc(n_chars + 1) as *mut c_char;
     libc::strncpy(target, string.as_ptr(), n_chars);
-    std::slice::from_raw_parts_mut(target, n_chars + 1)[n_chars] = '\0' as i8;
+    std::slice::from_raw_parts_mut(target, n_chars + 1)[n_chars] = '\0' as core::ffi::c_char;
 
     // Return the string
     target
@@ -486,7 +486,7 @@ pub unsafe extern "C" fn serror_serialize_swarns(serr: *const SourceError, buffe
     if serr.warns.is_empty() {
         // Write a single-byte buffer with only the null buffer
         let target: *mut c_char = libc::malloc(1) as *mut c_char;
-        std::slice::from_raw_parts_mut(target, 1)[0] = '\0' as i8;
+        std::slice::from_raw_parts_mut(target, 1)[0] = '\0' as core::ffi::c_char;
         *buffer = target;
 
         // A'ight that's it then
@@ -535,7 +535,7 @@ pub unsafe extern "C" fn serror_serialize_serrs(serr: *const SourceError, buffer
     if serr.errs.is_empty() {
         // Write a single-byte buffer with only the null buffer
         let target: *mut c_char = libc::malloc(1) as *mut c_char;
-        std::slice::from_raw_parts_mut(target, 1)[0] = '\0' as i8;
+        std::slice::from_raw_parts_mut(target, 1)[0] = '\0' as core::ffi::c_char;
         *buffer = target;
 
         // A'ight that's it then
@@ -590,7 +590,7 @@ pub unsafe extern "C" fn serror_serialize_err(serr: *const SourceError, buffer: 
         None => {
             // Write a single-byte buffer with only the null buffer
             let target: *mut c_char = libc::malloc(1) as *mut c_char;
-            std::slice::from_raw_parts_mut(target, 1)[0] = '\0' as i8;
+            std::slice::from_raw_parts_mut(target, 1)[0] = '\0' as core::ffi::c_char;
             *buffer = target;
         },
     }
