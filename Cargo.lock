@@ -5976,6 +5976,7 @@ dependencies = [
  "humantime",
  "jsonwebtoken",
  "paste",
+ "semver",
  "specifications 3.0.0",
  "tar",
  "thiserror 2.0.12",
