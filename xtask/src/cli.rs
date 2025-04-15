@@ -75,6 +75,7 @@ pub(crate) mod xtask {
         /// Builds a set of predefined targets for Brane
         Build {
             /// The targets to build
+            #[arg(required=true, num_args=1..)]
             targets: Vec<String>,
         },
         #[cfg(feature = "ci")]
