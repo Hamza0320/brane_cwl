@@ -2,7 +2,7 @@
 //! CLIs from other packages, which are defined in module [`crate::external_cli`].
 #[cfg(feature = "cli")]
 use {
-    crate::registry::{self, Target},
+    crate::registry::{REGISTRY, Target},
     clap::{ValueEnum, builder::PossibleValue},
     std::{
         env::consts::{ARCH, OS},
@@ -116,10 +116,7 @@ impl ValueEnum for ClapTarget {
     fn value_variants<'a>() -> &'a [Self] {
         static INSTANCE: OnceLock<Box<[ClapTarget]>> = OnceLock::new();
 
-        let targets = INSTANCE.get_or_init(|| {
-            let reg = registry::registry();
-            reg.list_targets(OS, ARCH).filter(|target| target.command.is_some()).cloned().map(Self).collect()
-        });
+        let targets = INSTANCE.get_or_init(|| REGISTRY.list_targets(OS, ARCH).filter(|target| target.command.is_some()).cloned().map(Self).collect());
 
         targets
     }

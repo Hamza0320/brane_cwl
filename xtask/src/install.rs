@@ -7,7 +7,7 @@ use anyhow::{Context as _, bail};
 use clap_complete::{Generator, Shell, generate};
 use tracing::{debug, info, warn};
 
-use crate::registry;
+use crate::registry::REGISTRY;
 use crate::utilities::{CopyError, SubCommandIter, copy};
 
 /// Provides a map for the various user locations where shell completions are stored.
@@ -41,7 +41,7 @@ pub(crate) fn completions(parents: bool, force: bool) -> anyhow::Result<()> {
 
         // We do not need completions for the binaries ran inside the images, as we cannot
         // auto-complete those anyway.
-        for target in registry::registry().search_for_system("binaries", OS, ARCH) {
+        for target in REGISTRY.search_for_system("binaries", OS, ARCH) {
             let Some(mut command) = target.command else {
                 continue;
             };
@@ -76,7 +76,7 @@ pub(crate) fn binaries(parents: bool, force: bool) -> anyhow::Result<()> {
     let base_dir = directories::BaseDirs::new().context("Could not determine directories in which to install")?;
     let dest_dir = base_dir.executable_dir().context("Could not determine the directories in which to install")?;
 
-    for target in registry::registry().search_for_system("binaries", OS, ARCH) {
+    for target in REGISTRY.search_for_system("binaries", OS, ARCH) {
         let Some(command) = target.command else { continue };
 
         let bin_name = command.get_name().to_owned();
@@ -114,7 +114,7 @@ pub(crate) fn manpages(parents: bool, force: bool) -> anyhow::Result<()> {
         }
     }
 
-    for target in registry::registry().search_for_system("binaries", OS, ARCH) {
+    for target in REGISTRY.search_for_system("binaries", OS, ARCH) {
         let Some(command) = target.command else { continue };
 
         crate::man::generate_recursively(command, &dest_dir, true, force)?;
@@ -133,7 +133,7 @@ pub(crate) fn uninstall() -> anyhow::Result<()> {
 
     // Removing binaries
     let dest_dir = base_dir.executable_dir().context("Could not determine the directories in which to uninstall")?;
-    for target in registry::registry().search("binaries") {
+    for target in REGISTRY.search("binaries") {
         let path = dest_dir.join(target.output_name);
 
         if path.exists() {
@@ -143,7 +143,7 @@ pub(crate) fn uninstall() -> anyhow::Result<()> {
     }
 
     // Removing completion files
-    for target in registry::registry().search("binaries") {
+    for target in REGISTRY.search("binaries") {
         let Some(command) = target.command else { continue };
 
         for (shell, directory) in completion_locations().context("Could not get completion locations")? {
@@ -159,7 +159,7 @@ pub(crate) fn uninstall() -> anyhow::Result<()> {
     // Removing man page files
     let data_dir = base_dir.data_local_dir();
     let man_dir = data_dir.join("man/man1/");
-    for target in registry::registry().search("binaries") {
+    for target in REGISTRY.search("binaries") {
         let Some(command) = target.command else { continue };
 
         for command in SubCommandIter::new(command) {

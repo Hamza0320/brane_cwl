@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use tracing::{info, warn};
 
-use crate::registry::{self, BuildFuncInfo};
+use crate::registry::{BuildFuncInfo, REGISTRY};
 
 /// Build all given targets for the current operating system and architecture.
 /// # Arguments
@@ -14,11 +14,10 @@ use crate::registry::{self, BuildFuncInfo};
 /// Note that a target can be both a package name (e.g. 'brane-ctl') or a group name (e.g.
 /// 'binaries').
 pub fn build(targets: &[String]) -> anyhow::Result<()> {
-    let registry = registry::registry();
     let build_targets: HashSet<_> = targets
         .iter()
         .flat_map(|target| {
-            let mut found = registry.search_for_system(target, OS, ARCH).peekable();
+            let mut found = REGISTRY.search_for_system(target, OS, ARCH).peekable();
 
             if found.peek().is_none() {
                 warn!("Target {target} did not match any known targets for your system");

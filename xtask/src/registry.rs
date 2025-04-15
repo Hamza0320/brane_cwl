@@ -4,7 +4,7 @@
 //! this registry functions as a database for this information.
 use std::hash::Hash;
 use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, LazyLock};
 
 use tracing::trace;
 
@@ -16,12 +16,7 @@ use crate::utilities::ensure_dir_with_cachetag;
 
 /// The registry containing all binaries, images, and other outputs of the Brane framework. This
 /// can be used by xtask to query those outputs in various ways.
-/// NOTE: You probably don't mean to use this, use the accessor ([`registry`]) instead.
-static REGISTRY: OnceLock<Registry> = OnceLock::new();
-
-/// The registry containing all binaries, images, and other outputs of the Brane framework. This
-/// can be used by xtask to query those outputs in various ways.
-pub fn registry() -> &'static Registry { REGISTRY.get_or_init(build_registry) }
+pub static REGISTRY: LazyLock<Registry> = LazyLock::new(build_registry);
 
 /// The signature of the function that build a given [`Target`] in Brane.
 pub type BuildFunc = dyn Fn(BuildFuncInfo) -> anyhow::Result<()> + Sync + Send;

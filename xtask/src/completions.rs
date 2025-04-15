@@ -9,7 +9,7 @@ use clap::{Command, ValueEnum};
 use clap_complete::{Generator, Shell};
 use tracing::info;
 
-use crate::registry::{self, Target};
+use crate::registry::{REGISTRY, Target};
 
 /// Queryies the registry and builds completion files for the specified targets
 ///
@@ -27,7 +27,7 @@ pub(crate) fn generate_by_target(target: Option<Target>, shell: Option<Shell>, d
 
     let targets_to_do = match target {
         Some(target) => &[target][..],
-        None => &registry::registry().list_targets(OS, ARCH).cloned().collect::<Vec<_>>(),
+        None => &REGISTRY.list_targets(OS, ARCH).cloned().collect::<Vec<_>>(),
     };
 
     for shell in shells_to_do {

@@ -7,7 +7,7 @@ use anyhow::Context;
 use clap::Command;
 use tracing::{info, warn};
 
-use crate::registry::{self, Target};
+use crate::registry::{REGISTRY, Target};
 use crate::utilities::SubCommandIter;
 
 /// Generates all man pages for all commands (and subcommands) that are part of the given target.
@@ -20,7 +20,7 @@ use crate::utilities::SubCommandIter;
 pub(crate) fn generate_by_target(target: Option<Target>, destination: impl AsRef<Path>, compressed: bool, force: bool) -> anyhow::Result<()> {
     let targets = match target {
         Some(target) => &[target][..],
-        None => &registry::registry().list_targets(OS, ARCH).cloned().collect::<Vec<_>>(),
+        None => &REGISTRY.list_targets(OS, ARCH).cloned().collect::<Vec<_>>(),
     };
 
     for target in targets {
