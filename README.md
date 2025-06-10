@@ -52,3 +52,109 @@ Consult the [code documentation](https://braneframework.github.io/brane/unstable
 ```bash
 cargo doc --release --no-deps --document-private-items --open
 ```
+## 🧪 Tutorial: CWL Integration in Brane
+
+This tutorial demonstrates how to use the new CWL support in Brane to build and load a CWL-based workflow as a Brane package.
+
+---
+
+### ✅ Prerequisites
+
+Ensure that the following are installed:
+
+- Docker
+- Rust (via [rustup](https://rustup.rs))
+- Brane and `branectl` built from source
+- Brane CLI available via `cargo run --bin brane --`
+
+Optional: [CWL reference tools](https://www.commonwl.org/user_guide/quick-start-guide/) to validate your CWL files locally.
+
+---
+
+### 🛠 Step-by-step Guide
+
+#### 1. Clone and build Brane
+
+```bash
+git clone https://github.com/BraneFramework/brane.git
+cd brane
+cargo build --release
+```
+
+#### 2. Run the CWL-to-Brane package generator
+
+You can generate a Brane-compatible package from a CWL file:
+
+```bash
+cargo run --bin brane -- cwl tests/packages/hello_cwl/hello_world.cwl
+```
+
+✔ This will:
+
+- Parse the `hello_world.cwl` CWL file
+- Build a Docker image from the CWL tool definition
+- Output a Brane package in `target/generated/hello_world/`
+
+#### 3. Load the CWL package into the Brane instance
+
+```bash
+brane package load target/generated/hello_world
+```
+
+Once loaded, you can verify it is available:
+
+```bash
+brane package list
+```
+
+Look for `hello_world` with kind `cwl`.
+
+#### 4. Test the CWL package
+
+To test the package:
+
+```bash
+brane package test hello_world
+```
+
+This runs the `hello_world` CWL tool inside Brane and validates it in isolation.
+
+---
+
+### 🧪 Example Output
+
+If everything works correctly, you should see:
+
+```
+✅ Parsed CWL CommandLineTool
+🐳 Docker image built: brane-cwl-hello_world:latest
+📦 Brane CWL package available at: target/generated/hello_world
+✅ Loaded hello_world into the registry
+```
+
+---
+
+### 📂 Example Directory Structure
+
+```
+brane/
+├── tests/
+│   └── packages/
+│       └── hello_cwl/
+│           ├── hello_world.cwl
+│           └── input.json (optional)
+├── target/
+│   └── generated/
+│       └── hello_world/
+│           ├── Dockerfile
+│           ├── entry.sh
+│           └── package.yml
+```
+
+---
+
+### 🧩 CWL Subset Support
+
+This integration supports CWL v1.1 `CommandLineTool` definitions with basic `inputs`, `outputs`, and `baseCommand` usage. Support for full workflows and advanced expressions is under development.
+
+---
