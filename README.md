@@ -67,8 +67,6 @@ Ensure that the following are installed:
 - Brane and `branectl` built from source
 - Brane CLI available via `cargo run --bin brane --`
 
-Optional: [CWL reference tools](https://www.commonwl.org/user_guide/quick-start-guide/) to validate your CWL files locally.
-
 ---
 
 ### 🛠 Step-by-step Guide
@@ -76,8 +74,8 @@ Optional: [CWL reference tools](https://www.commonwl.org/user_guide/quick-start-
 #### 1. Clone and build Brane
 
 ```bash
-git clone https://github.com/BraneFramework/brane.git
-cd brane
+git clone https://github.com/Hamza0320/brane_cwl
+cd brane_cwl
 cargo build --release
 ```
 
