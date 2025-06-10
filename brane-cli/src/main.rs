@@ -13,6 +13,7 @@
 //
 
 mod cli;
+mod cwl;
 
 #[macro_use]
 extern crate human_panic;
@@ -212,7 +213,11 @@ async fn run(options: Cli) -> Result<(), CliError> {
                         PackageKind::Ecu => build_ecu::handle(arch.unwrap_or(Arch::HOST), workdir, file, init, keep_files, crlf_ok)
                             .await
                             .map_err(|source| CliError::BuildError { source })?,
-                        _ => eprintln!("Unsupported package kind: {kind}"),
+                        PackageKind::Cwl => {
+                                cwl::build(workdir, file)
+                                    .map_err(|source| CliError::BuildError { source })?
+                            },
+                            _ => eprintln!("Unsupported package kind: {kind}"),
                     }
                 },
                 PackageSubcommand::Import { arch, repo, branch, workdir, file, kind, init, crlf_ok } => {
@@ -390,6 +395,9 @@ async fn run(options: Cli) -> Result<(), CliError> {
                 // Print neatly
                 version::handle().await.map_err(|source| CliError::VersionError { source })?;
             }
+        },
+        Cwl { file } => {
+            cwl::handle(file).await.map_err(|source| CliError::OtherError { source })?;
         },
         Workflow { subcommand } => match subcommand {
             WorkflowSubcommand::Check { file, bakery, user, profile } => {
